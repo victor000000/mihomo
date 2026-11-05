@@ -57,8 +57,13 @@ Documentation-only edits need link/anchor, example, and secret/text checks; they
 
 ```powershell
 pwsh -NoProfile -File .\tools\Build-SourceBundle.ps1
+pwsh -NoProfile -File .\tools\Test-SourceBundle.ps1
 ```
 
 This writes `artifacts/mihomo-toolkit.zip` with a SHA-256 source manifest. Use `-OutputPath` for a new destination; `-Force` explicitly replaces an existing bundle. Runtime credentials, provider caches, state, downloaded binaries, and local dependencies are excluded. The bundle is source-only.
 
 `tools/Backup-Repo.ps1` instead creates a Git bundle of committed history and refs. It does not back up uncommitted changes or private deployment files, and its retention policy removes older bundles. Deployment rollback is covered in [operations](OPERATIONS.md#rollback).
+
+## Deployment boundary
+
+CI has read-only repository permissions. It validates offline fixtures and publishes a sanitized source archive as a workflow artifact. No automated deployment target or CD workflow is configured. Tests exclude the `Machine` tag and do not certify hardware adapters, live proxy subscriptions, Windows hotspot operation, or production connectivity. Provision and verify those separately using the operations guide; credentials never belong in GitHub Actions artifacts.

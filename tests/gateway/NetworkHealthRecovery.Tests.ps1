@@ -14,6 +14,14 @@ Describe 'Verified recovery health baseline' {
   $proof|ConvertTo-Json|Set-Content $marker
   Get-VerifiedRecoveryTime $marker $config $now | Should -Not -BeNullOrEmpty
  }
+ It 'preserves the exact UTC instant across JSON date handling' {
+  $expected=[datetimeoffset]::Parse('2024-01-02T03:04:05.1234567+08:00').UtcDateTime
+  $proof.VerifiedAtUtc='2024-01-02T03:04:05.1234567+08:00'
+  $proof|ConvertTo-Json|Set-Content $marker
+  $actual=Get-VerifiedRecoveryTime $marker $config $now
+  $actual.Ticks | Should -Be $expected.Ticks
+  $actual.Kind | Should -Be 'Utc'
+ }
  It 'rejects a stale configuration hash' {
   $proof.ConfigSha256='different';$proof|ConvertTo-Json|Set-Content $marker
   Get-VerifiedRecoveryTime $marker $config $now | Should -BeNullOrEmpty

@@ -126,7 +126,9 @@ function Get-VerifiedRecoveryTime {
         $m=Get-Content -LiteralPath $MarkerPath -Raw -ErrorAction Stop|ConvertFrom-Json -ErrorAction Stop
         if(-not $m.EgressPassed -or -not $m.CodexConnected -or -not $m.HotspotSharing){return $null}
         if($m.ConfigSha256 -ne (Get-FileHash -LiteralPath $ConfigPath -Algorithm SHA256 -ErrorAction Stop).Hash){return $null}
-        $when=([datetimeoffset]::Parse($m.VerifiedAtUtc)).UtcDateTime
+        # PowerShell 7.5+ may deserialize ISO JSON timestamps as DateTime.
+        # Parsing its culture-formatted string would discard the UTC Kind.
+        $when=if($m.VerifiedAtUtc -is [datetime]){$m.VerifiedAtUtc.ToUniversalTime()}else{([datetimeoffset]::Parse([string]$m.VerifiedAtUtc)).UtcDateTime}
         if($when -gt $NowUtc.ToUniversalTime()){return $null}
         return $when
     }catch{return $null}

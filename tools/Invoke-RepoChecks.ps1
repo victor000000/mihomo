@@ -399,7 +399,7 @@ if (-not $Check -or $Check -eq 'secrets') {
             Add-Failure "missing $ConfigRel" -File $ConfigRel
         } else {
             $cfgText = Get-TextFile -Root $RepoRoot -Rel $ConfigRel
-            foreach ($needle in @('REPLACE-UUID', '__HY2_PASSWORD__', '__SUBSCRIPTION_TOKEN__')) {
+            foreach ($needle in @('REPLACE-LA-OMRIN-UUID', 'REPLACE-TOKYO-OMRIN-UUID', '__HY2_PASSWORD__')) {
                 if ($cfgText -notlike "*$needle*") {
                     Add-Failure "template is missing the redaction placeholder $needle - removing the marker is not redaction" -File $ConfigRel
                 }

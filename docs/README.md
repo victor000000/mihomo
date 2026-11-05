@@ -4,7 +4,7 @@ Start with the [project overview](../README.md). Commands in these guides run fr
 
 | Document | Purpose |
 |---|---|
-| [Handoff and recovery](current/HANDOFF.md) | First-session checklist, evidence map, known gaps, backup and migration boundaries |
+| [Deployment and recovery](current/OPERATIONS.md) | First-session checklist, evidence map, known gaps, backup and migration boundaries |
 | [Configuration reference](current/CONFIGURATION.md) | Policy fields, adapter identities and metrics, reload semantics, cloud-only tunnel |
 | [Dispatch](current/DISPATCH.md) | Weighted scheduling, health hysteresis, controller lifecycle and observation limits |
 | [Operations](current/OPERATIONS.md) | Provisioning requirements, daily commands, routing changes, rollback, troubleshooting, and logs |

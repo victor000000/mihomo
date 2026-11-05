@@ -17,7 +17,7 @@ $paths = @(Get-RepositoryFile -Root $RepositoryRoot | Where-Object {
     $_ -in @('.gitignore', '.gitattributes', 'runtime\mihomo-supervisor.ps1',
         'config\mihomo-config.template.yaml', 'config\clashmi-recommended-rules.yaml',
         'config\domestic-suffixes.txt', 'config\paid-mix.json',
-        'config\mihomo-adapters.json', 'config\network-architecture.json', '.github\workflows\ci.yml')
+        'config\mihomo-adapters.json', 'config\network-architecture.json', 'config\dispatch-policy.json', 'config\codex-cloud-tunnel.json', '.github\workflows\ci.yml')
 })
 $paths = @($paths | Where-Object {
     [IO.Path]::GetExtension($_) -notin @('.exe', '.dll', '.zip', '.nupkg', '.pcap', '.pfx', '.pem', '.key') -and

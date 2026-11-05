@@ -30,7 +30,7 @@
             $files.Add($file.Name)
         }
     }
-    foreach ($relative in @('config\mihomo-config.template.yaml', 'config\clashmi-recommended-rules.yaml', 'config\domestic-suffixes.txt', 'config\paid-mix.json', 'config\mihomo-adapters.json', 'config\network-architecture.json', 'runtime\mihomo-supervisor.ps1')) {
+    foreach ($relative in @('config\mihomo-config.template.yaml', 'config\clashmi-recommended-rules.yaml', 'config\domestic-suffixes.txt', 'config\paid-mix.json', 'config\mihomo-adapters.json', 'config\network-architecture.json', 'config\dispatch-policy.json', 'config\codex-cloud-tunnel.json', 'runtime\mihomo-supervisor.ps1')) {
         if (Test-Path -LiteralPath (Join-Path $Root $relative) -PathType Leaf) { $files.Add($relative) }
     }
     $pending = New-Object System.Collections.Queue

@@ -34,20 +34,29 @@ jobs:
           python -m unittest discover -s tests/gateway -p "test_*.py"
 
       - name: Bootstrap exact repository-local test dependencies
-        shell: ${{ matrix.powershell == '7' && 'pwsh' || 'powershell' }}
-        run: ./tools/Initialize-TestEnvironment.ps1
+        shell: pwsh
+        run: |
+          $engine = if ('${{ matrix.powershell }}' -eq '5.1') { 'powershell.exe' } else { 'pwsh.exe' }
+          & $engine -NoProfile -NonInteractive -File ./tools/Initialize-TestEnvironment.ps1
+          exit $LASTEXITCODE
 
       # One authoritative check entry point; includes syntax checks for root,
       # product, tools and tests. Config/domestic/mix/ignore and synthetic learner
       # guards are also ordinary Pester tests, not separate inline YAML programs.
       - name: Run repository checks
-        shell: ${{ matrix.powershell == '7' && 'pwsh' || 'powershell' }}
-        run: ./tools/Invoke-RepoChecks.ps1 -Quiet
+        shell: pwsh
+        run: |
+          $engine = if ('${{ matrix.powershell }}' -eq '5.1') { 'powershell.exe' } else { 'pwsh.exe' }
+          & $engine -NoProfile -NonInteractive -File ./tools/Invoke-RepoChecks.ps1 -Quiet
+          exit $LASTEXITCODE
 
       - name: Run hermetic tests
         id: tests
-        shell: ${{ matrix.powershell == '7' && 'pwsh' || 'powershell' }}
-        run: ./tests/Run-Tests.ps1 -CI -Verbosity Detailed
+        shell: pwsh
+        run: |
+          $engine = if ('${{ matrix.powershell }}' -eq '5.1') { 'powershell.exe' } else { 'pwsh.exe' }
+          & $engine -NoProfile -NonInteractive -File ./tests/Run-Tests.ps1 -CI -Verbosity Detailed
+          exit $LASTEXITCODE
 
       - name: Upload engine-scoped XML results
         if: always() && steps.tests.outcome != 'skipped'
@@ -66,25 +75,7 @@ jobs:
         id: source-export
         if: success() && matrix.powershell == '7'
         shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $workspace = (Get-Location).Path
-          $export = Join-Path ([IO.Path]::GetTempPath()) ('mihomo-source-' + [guid]::NewGuid().ToString('N'))
-          $null = [IO.Directory]::CreateDirectory($export)
-          try {
-            Add-Type -AssemblyName System.IO.Compression.FileSystem
-            [IO.Compression.ZipFile]::ExtractToDirectory((Join-Path $workspace 'artifacts/mihomo-toolkit.zip'), $export)
-            $modules = Join-Path $export '.tools/Modules/Pester'
-            $null = New-Item -ItemType Directory -Path $modules -Force
-            Copy-Item -LiteralPath (Join-Path $workspace '.tools/Modules/Pester/5.5.0') -Destination $modules -Recurse
-            $shell = Join-Path $PSHOME 'pwsh.exe'
-            & $shell -NoProfile -File (Join-Path $export 'tools/Invoke-RepoChecks.ps1') -RepoRoot $export -Quiet
-            if ($LASTEXITCODE -ne 0) { throw 'Packaged source checks failed.' }
-            & $shell -NoProfile -File (Join-Path $export 'tests/Run-Tests.ps1') -CI -Verbosity Detailed -ResultsPath (Join-Path $workspace 'artifacts/test-results/source-export-7.xml')
-            if ($LASTEXITCODE -ne 0) { throw 'Packaged source tests failed.' }
-          } finally {
-            Remove-Item -LiteralPath $export -Recurse -Force
-          }
+        run: ./tools/Test-SourceBundle.ps1
 
       - name: Upload packaged-source XML results
         if: always() && matrix.powershell == '7' && steps.source-export.outcome != 'skipped'

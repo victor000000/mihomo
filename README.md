@@ -19,7 +19,7 @@ The first command captures local status; the second starts the proxy and registe
 
 | Need | Read |
 |---|---|
-| Resume work or deploy on another machine | [Handoff and recovery](docs/current/HANDOFF.md) |
+| Resume work or deploy on another machine | [Deployment and recovery](docs/current/OPERATIONS.md) |
 | Understand configuration fields and reload behavior | [Configuration reference](docs/current/CONFIGURATION.md) |
 | Diagnose a connection or change routing | [Operations](docs/current/OPERATIONS.md) |
 | Inspect traffic weights or optimization logs | [Dispatch](docs/current/DISPATCH.md) |
