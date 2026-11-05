@@ -2,7 +2,7 @@
 
 Windows networking toolkit for Mihomo routing, four managed adapters, automatic adapter recovery, and Windows Mobile Hotspot.
 
-Applications using the system or explicit proxy enter Mihomo on port **7897**. General traffic can use adapter-bound Tokyo and LA pools. The intended hotspot split prefers **`jd_5G`** for HypoMux clients and reserves other adapters for proxy traffic. Actual ICS ownership has diverged from that policy; inspect it before choosing proxy paths (see [handoff and known gaps](docs/current/HANDOFF.md)). The main engine's TUN stays disabled. A separate cloud-only tunnel covers Codex's backend WebSocket addresses, because that connection bypasses Windows proxy settings; other native applications follow Windows routing.
+Applications using the system or explicit proxy enter Mihomo on port **7897**. General traffic can use adapter-bound Tokyo and LA pools. The intended hotspot split prefers **`jd_5G`** for HypoMux clients and reserves other adapters for proxy traffic. Inspect actual ICS ownership before choosing proxy paths; see [deployment and recovery](docs/current/OPERATIONS.md). The main engine's TUN stays disabled. A separate cloud-only tunnel covers Codex's backend WebSocket addresses, because that connection bypasses Windows proxy settings; other native applications follow Windows routing.
 
 ## Start here
 
