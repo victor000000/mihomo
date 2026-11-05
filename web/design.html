@@ -1,0 +1,1257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Network Stack — Design Review</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2128; --line:#30363d;
+    --txt:#e6edf3; --dim:#8b949e; --ok:#3fb950; --warn:#d29922;
+    --bad:#f85149; --accent:#58a6ff; --purple:#bc8cff; --cyan:#39c5cf;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--txt);
+       font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+       padding:0 0 80px}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+  header{background:linear-gradient(180deg,#161b22,#0d1117);
+         border-bottom:1px solid var(--line);padding:34px 0 26px;margin-bottom:28px}
+  header h1{font-size:26px;font-weight:650;letter-spacing:-.4px}
+  header p{color:var(--dim);margin-top:7px;font-size:13.5px}
+  .badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11.5px;
+         border:1px solid var(--line);background:var(--panel2);color:var(--dim);
+         margin-right:6px;margin-top:10px}
+  h2{font-size:18px;font-weight:620;margin:38px 0 6px;padding-top:22px;
+     border-top:1px solid var(--line);letter-spacing:-.2px}
+  h2 .n{color:var(--dim);font-weight:400;margin-right:9px}
+  h3{font-size:14.5px;font-weight:620;margin:22px 0 8px;color:var(--accent)}
+  h4{font-size:13px;font-weight:600;margin:16px 0 6px;color:var(--dim);
+     text-transform:uppercase;letter-spacing:.5px}
+  p{margin:9px 0;color:#c9d1d9}
+  .lead{color:var(--dim);font-size:13.5px;margin-bottom:16px}
+  code{font:12.5px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;
+       background:var(--panel2);border:1px solid var(--line);border-radius:4px;
+       padding:1.5px 5px;color:var(--cyan)}
+  pre{background:var(--panel);border:1px solid var(--line);border-radius:7px;
+      padding:14px 16px;overflow-x:auto;margin:12px 0;
+      font:12.5px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;color:#c9d1d9}
+  pre code{background:none;border:none;padding:0;color:inherit}
+  .graphwrap{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+             padding:8px;margin:14px 0;overflow-x:auto}
+  .graphwrap svg{display:block;width:100%;height:auto;min-width:940px}
+  .diagram{background:var(--panel);border:1px solid var(--line);border-radius:7px;
+           padding:18px;overflow-x:auto;margin:14px 0;
+           font:12px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;
+           color:#c9d1d9;white-space:pre}
+  table{width:100%;border-collapse:collapse;margin:13px 0;font-size:13px}
+  th{text-align:left;color:var(--dim);font-weight:550;padding:7px 10px;
+     border-bottom:1px solid var(--line);background:var(--panel2)}
+  td{padding:7px 10px;border-bottom:1px solid #21262d;vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  td code{font-size:12px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+        padding:16px 18px;margin:14px 0}
+  .card.warn{border-left:3px solid var(--warn)}
+  .card.bad{border-left:3px solid var(--bad)}
+  .card.ok{border-left:3px solid var(--ok)}
+  .card.info{border-left:3px solid var(--accent)}
+  .card h4{margin-top:0}
+  .tag{display:inline-block;padding:1px 7px;border-radius:4px;font-size:11.5px;
+       border:1px solid var(--line);background:var(--panel2)}
+  .tag.ok{color:var(--ok);border-color:#238636}
+  .tag.bad{color:var(--bad);border-color:#8b2c25}
+  .tag.warn{color:var(--warn);border-color:#9e6a03}
+  .tag.acc{color:var(--accent);border-color:#1f6feb}
+  .yes{color:var(--ok);font-weight:600}
+  .no{color:var(--bad);font-weight:600}
+  .maybe{color:var(--warn);font-weight:600}
+  ul,ol{margin:9px 0 9px 22px;color:#c9d1d9}
+  li{margin:4px 0}
+  .q{background:var(--panel);border:1px solid #1f6feb;border-left:3px solid var(--accent);
+     border-radius:8px;padding:15px 18px;margin:14px 0}
+  .q h4{color:var(--accent);margin-top:0}
+  .q .opts{margin-top:10px}
+  .q .opt{padding:8px 12px;border:1px solid var(--line);border-radius:6px;
+          margin:7px 0;background:var(--panel2)}
+  .q .opt b{color:var(--txt)}
+  .q .opt span{color:var(--dim);font-size:12.5px}
+  .rec{border-color:#238636;border-left-color:var(--ok)}
+  .rec h4{color:var(--ok)}
+  .toc{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+       padding:14px 18px;margin:18px 0}
+  .toc a{color:var(--accent);text-decoration:none;font-size:13px}
+  .toc a:hover{text-decoration:underline}
+  .toc ol{margin:6px 0 0 20px}
+  footer{margin-top:50px;padding-top:20px;border-top:1px solid var(--line);
+         color:var(--dim);font-size:12.5px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <h1>Network Stack — Design Review</h1>
+    <p>One owner per job: mihomo sets policy, HypoMux picks the adapter — for <b>every</b> connection, direct included. System proxy on both components, no TUN anywhere. Every claim below is measured, not assumed.</p>
+    <div>
+      <span class="badge">mihomo v1.19.32</span>
+      <span class="badge">HypoMux <code>mode: proxy</code> (GUI-owned)</span>
+      <span class="badge">apps/system proxy → mihomo → HypoMux → the adapters</span>
+      <span class="badge">no TUN anywhere</span>
+      <span class="badge">metacubexd 1.273.1</span>
+      <span class="badge">911 subscription (the 4:1 proxy path: four 911 exits : one Aliyun)</span>
+      <span class="badge">catch-all <code>MATCH,DISPATCH</code> · direct traffic NIC-dispatched too</span>
+      <span class="badge">911 must-proxy list (354)</span>
+      <span class="badge">pwsh 7 default · WinRT on 5.1</span>
+      <span class="badge">shadowsocks-rust 1.25.0</span>
+      <span class="badge" style="opacity:.55">SmartDNS-rs · retired</span><a href="/" style="color:#58a6ff;font-size:12px;text-decoration:none;border:1px solid #1f6feb;padding:3px 10px;border-radius:6px;margin-left:8px">← live status</a>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<div class="toc">
+  <b>Contents</b>
+  <ol>
+    <li><a href="#s1">The design of record — one owner per job</a></li>
+    <li><a href="#s2">The chain, drawn</a></li>
+    <li><a href="#s3">Resolution — DNS policy: mihomo (live: <code>:53</code> is ICS)</a></li>
+    <li><a href="#s4">Policy — mihomo, the system proxy</a></li>
+    <li><a href="#s5">NIC dispatch — HypoMux, GUI-owned</a></li>
+    <li><a href="#s6">Transport — the Aliyun upstreams</a></li>
+    <li><a href="#s7">Failover chains</a></li>
+    <li><a href="#s8">Startup order &amp; persistence</a></li>
+    <li><a href="#s9">Measured evidence</a></li>
+    <li><a href="#s10">Known limits &amp; open decisions</a></li>
+    <li><a href="#s11">2026-10-11 — what changed</a></li>
+    <li><a href="#s12">2026-10-12 — the startup control plane (recommended)</a></li>
+    <li><a href="#s13">2026-10-12 — what changed</a></li>
+  </ol>
+</div>
+
+<!-- ================================================================= -->
+<h2 id="s1"><span class="n">1</span>The design of record — one owner per job</h2>
+
+<div class="card info">
+  <p style="margin:0;font-size:15px">
+    <b>mihomo</b> decides <i>whether</i> a connection needs a proxy, <i>which upstream
+    proxy</i> it uses, and DNS policy.<br>
+    <b>HypoMux</b> decides <i>which adapter</i> every dial leaves by — <i>every</i>
+    connection, direct included: proxied dials via <code>dialer-proxy</code>, everything
+    else via the <code>DISPATCH</code> group. It measures the adapters and holds the
+    weights and the strategy.<br>
+    <b>Chain:</b> <code>apps/system proxy → mihomo → HypoMux → the adapters</code>.
+    <b>Operating mode: system
+    proxy on both components, no TUN anywhere</b> (<code>tun.enable: false</code>;
+    HypoMux <code>mode: proxy</code> with <code>system_proxy_takeover: false</code>).
+  </p>
+</div>
+
+<h3>One owner per job</h3>
+<table>
+  <tr><th style="width:62%">job</th><th>owner</th></tr>
+  <tr><td>which traffic is proxied (rules), which upstream proxy is chosen (groups), DNS policy</td><td><b>mihomo</b></td></tr>
+  <tr><td>which adapter each dial leaves by (NIC dispatch) — <b>every</b> connection, direct included via <code>DISPATCH</code> — adapter measurement, weights, strategy</td><td><b>HypoMux</b></td></tr>
+  <tr><td>the NIC selection / weights / strategy settings themselves</td><td><b>the HypoMux GUI, by hand</b> — no script in this repo drives HypoMux (section 5)</td></tr>
+</table>
+
+<p class="lead">mihomo holds <b>no per-NIC outbounds and no load-balance rings</b> under this
+design; the Aliyun-reaching outbounds carry <code>dialer-proxy: hypomux</code>, so the
+<i>dial</i> is what HypoMux spreads across adapters — and since the third revision
+everything mihomo does not proxy reaches the same listener through
+<code>DISPATCH = fallback [hypomux, DIRECT]</code>. Only loopback and the private ranges
+still follow the plain OS route — plus the owner-ordered exception of 2026-10-12: the
+two DeepSeek rules (<code>deepseek.com</code> suffix and <code>deepseek</code> keyword)
+stay raw <code>DIRECT</code>, because through any proxy DeepSeek is unreachable from
+here.</p>
+
+<p class="lead"><b>Previous design — retired 2026-10-11, and the retirement is measured, not
+planned:</b> balance used to be expressed in mihomo's own groups — <code>round-robin</code> across
+adapters and across the paid nodes, <code>DIRECT-LB</code> for ordinary traffic — with a 40 GB guard
+on the metered plan. The completed <code>hypomux-distribution.ps1</code> (no arguments;
+<code>-Check</code> / <code>-Restore</code> / <code>-DryRun</code> / <code>-NoReload</code> /
+<code>-ConfigPath</code> / <code>-Summary</code>) ran for real against the live
+<code>runtime\config.yaml</code> at 12:2x on 2026-10-11 (exit 0, second run byte-identical): the
+per-NIC outbounds, the <code>HY2LB</code>/<code>DIRECT-LB</code>/<code>MIX</code> rings and the
+<code>GENERATED</code> bodies are gone, the watcher is stopped, and the live config holds only the
+renewed design. Section 11 carries the acceptance measurements.</p>
+
+<!-- ================================================================= -->
+<h2 id="s2"><span class="n">2</span>The chain, drawn</h2>
+
+<p class="lead">Drawn as designed, not as inherited: <b>apps/system proxy → mihomo → HypoMux →
+the adapters</b>, system proxy on both halves, no TUN anywhere — and since the third revision of
+2026-10-11 HypoMux is a hop for <b>every</b> connection mihomo handles, direct included
+(<code>DISPATCH</code>). The dated annotations under the graph keep the
+2026-10-10 five-component measurements (SmartDNS-rs, the ssh -D DNS exit) that first proved which
+process owned which socket — that layout is retired, but the evidence is why this one is drawn the
+way it is.</p>
+
+<div class="graphwrap">
+<svg viewBox="0 0 1100 1100" xmlns="http://www.w3.org/2000/svg" role="img"
+     aria-label="Network stack chain — mihomo policy, mihomo dispatches everything through HypoMux NIC dispatch">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6e7681"/></marker>
+    <marker id="arB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#58a6ff"/></marker>
+    <marker id="arG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#3fb950"/></marker>
+    <marker id="arP" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#bc8cff"/></marker>
+    <marker id="arW" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#d29922"/></marker>
+  </defs>
+
+  <style>
+    .bx    { fill:#161b22; stroke:#30363d; stroke-width:1.5; }
+    .bxL0  { fill:#1a2332; stroke:#1f6feb; stroke-width:1.8; }
+    .bxL1  { fill:#1c2a1f; stroke:#238636; stroke-width:1.8; }
+    .bxL2  { fill:#2a1f33; stroke:#8957e5; stroke-width:2.2; }
+    .bxExt { fill:#1c2128; stroke:#484f58; stroke-width:1.4; stroke-dasharray:5 3; }
+    .bxGrp { fill:#161b22; stroke:#58a6ff; stroke-width:1.6; }
+    .bxExc { fill:#241d10; stroke:#9e6a03; stroke-width:1.4; stroke-dasharray:5 3; }
+    .ti    { fill:#e6edf3; font:600 14px ui-monospace,Consolas,monospace; }
+    .ts    { fill:#8b949e; font:11.5px ui-monospace,Consolas,monospace; }
+    .tm    { fill:#e6edf3; font:12.5px ui-monospace,Consolas,monospace; }
+    .lb    { fill:#6e7681; font:600 10px ui-monospace,Consolas,monospace; letter-spacing:.9px; }
+    .ln    { stroke:#6e7681; stroke-width:1.6; fill:none; }
+    .lnB   { stroke:#58a6ff; stroke-width:1.8; fill:none; }
+    .lnG   { stroke:#3fb950; stroke-width:1.8; fill:none; }
+    .lnP   { stroke:#bc8cff; stroke-width:2.4; fill:none; }
+    .lnW   { stroke:#d29922; stroke-width:1.5; fill:none; stroke-dasharray:6 4; }
+    .cap   { fill:#6e7681; font:10.5px ui-monospace,Consolas,monospace; }
+    .capO  { fill:#d29922; font:10.5px ui-monospace,Consolas,monospace; }
+    .capP  { fill:#bc8cff; font:11px ui-monospace,Consolas,monospace; }
+  </style>
+
+  <!-- ================= TIER 1 : applications ================= -->
+  <rect class="bx" x="330" y="12" width="440" height="52" rx="9"/>
+  <text class="ti" x="550" y="34" text-anchor="middle">Windows applications</text>
+  <text class="ts" x="550" y="51" text-anchor="middle">browser · SQX · IB Gateway · akshare · Store · curl</text>
+
+  <path class="lnB" d="M 400 64 L 400 86 L 230 86 L 230 106" marker-end="url(#arB)"/>
+  <text class="cap" x="248" y="82">DNS query</text>
+  <path class="lnG" d="M 700 64 L 700 86 L 780 86 L 780 106" marker-end="url(#arG)"/>
+  <text class="cap" x="712" y="82">traffic (system proxy :7897)</text>
+
+  <!-- ================= TIER 2 : mihomo, both surfaces ================= -->
+  <rect class="bxL0" x="40" y="108" width="360" height="84" rx="9"/>
+  <text class="lb" x="58" y="130">LAYER 0 — RESOLUTION (POLICY: MIHOMO)</text>
+  <text class="ti" x="58" y="153">mihomo owns DNS policy</text>
+  <text class="ts" x="58" y="172">live: dns.enable: false · UDP :53 is ICS (svchost)</text>
+
+  <rect class="bxL1" x="470" y="108" width="590" height="84" rx="9"/>
+  <text class="lb" x="490" y="130">LAYER 1 — POLICY (MIHOMO IS THE SYSTEM PROXY)</text>
+  <text class="ti" x="490" y="153">mihomo v1.19.32</text>
+  <text class="ts" x="490" y="172">127.0.0.1:7897 (http+socks5) · :9097 (API) · tun.enable: false — no TUN anywhere</text>
+
+  <!-- ============ TIER 3a : DNS upstreams (mihomo nameserver-policy) ============ -->
+  <path class="lnB" d="M 140 192 L 140 242" marker-end="url(#arB)"/>
+  <path class="lnW" d="M 320 192 L 320 242" marker-end="url(#arW)"/>
+  <text class="cap" x="146" y="212">domestic</text>
+  <text class="capO" x="326" y="212">overseas</text>
+
+  <rect class="bx" x="40" y="244" width="180" height="70" rx="9"/>
+  <text class="tm" x="52" y="267">AliDNS · doh.pub</text>
+  <text class="ts" x="52" y="286">direct DoH</text>
+  <text class="ts" x="52" y="302">~45 ms</text>
+
+  <rect class="bx" x="240" y="244" width="180" height="70" rx="9"/>
+  <text class="tm" x="252" y="267">1.1.1.1 · 8.8.8.8</text>
+  <text class="ts" x="252" y="286">clean, unpoisoned</text>
+  <text class="ts" x="252" y="302">via ssh tunnel</text>
+  <text class="capO" x="360" y="302">exit A</text>
+  <text class="cap" x="48" y="332">2026-10-10 record: SmartDNS-rs served these lanes</text>
+  <text class="capO" x="48" y="346">live 2026-10-11: dns disabled · OS resolves per adapter</text>
+
+  <!-- ============ TIER 3b : the three groups mihomo resolves to ============ -->
+  <path class="lnG" d="M 540 192 L 540 242" marker-end="url(#arG)"/>
+  <path class="lnG" d="M 755 192 L 755 242" marker-end="url(#arG)"/>
+  <path class="lnG" d="M 970 192 L 970 242" marker-end="url(#arG)"/>
+  <text class="cap" x="552" y="216">needs proxy</text>
+  <text class="cap" x="767" y="216">proxied by rule</text>
+  <text class="cap" x="982" y="216">direct — OS route</text>
+
+  <rect class="bxGrp" x="440" y="244" width="200" height="112" rx="9"/>
+  <text class="lb" x="456" y="266">AUTO · LOAD-BALANCE</text>
+  <text class="tm" x="456" y="288">the proxy path — 4:1</text>
+  <text class="ts" x="456" y="306">4 × 911 (filter:) : 1 Aliyun</text>
+  <text class="ts" x="456" y="322">香港 80ms · 台湾 112</text>
+  <text class="ts" x="456" y="338">新加坡 115 · 马来 118</text>
+  <text class="ts" x="456" y="354">paid first · round-robin</text>
+
+  <rect class="bxGrp" x="655" y="244" width="200" height="112" rx="9"/>
+  <text class="lb" x="671" y="266">HYPOMUX-PATH · FALLBACK</text>
+  <text class="tm" x="671" y="288">defined, no longer routed</text>
+  <text class="ts" x="671" y="306">1. hy2-upstream</text>
+  <text class="ts" x="671" y="322">2. aliyun-native</text>
+  <text class="ts" x="671" y="338">unhealthy via the hop</text>
+  <text class="ts" x="671" y="354">AUTO names aliyun-native</text>
+
+  <!-- the rule tail that names what is proxied (owner, later on 2026-10-11) -->
+  <text class="lb" x="58" y="548">POLICY TAIL — RULES, NOT MATCH</text>
+  <text class="capO" x="58" y="570">catch-all is MATCH,DISPATCH (third revision, 2026-10-11)</text>
+  <text class="cap" x="58" y="588">911 list → RULE-SET,clashmi-911,AUTO · 354</text>
+  <text class="cap" x="58" y="606">MS Store/Update pinned DISPATCH, above the 911 list</text>
+  <text class="cap" x="58" y="624">www.163.com → match Match using DISPATCH[hypomux] (measured)</text>
+  <text class="capO" x="58" y="678">AUTO = 4:1 mix (owner, fourth change): 4 911 exits via filter: : aliyun-native</text>
+  <text class="cap" x="58" y="696">measured over 20 connections — HK 5 · TW 4 · SG 4 · aliyun-native 4 · MY 3 = 4:1</text>
+  <text class="cap" x="58" y="714">dukascopy.com LOCAL → DATA: the whole SQX data source is proxied now</text>
+
+  <rect class="bxGrp" x="870" y="244" width="200" height="112" rx="9"/>
+  <text class="lb" x="886" y="266">LOCAL · SELECT</text>
+  <text class="tm" x="886" y="288">direct — 29 rules</text>
+  <text class="ts" x="886" y="306">domestic · ibkr</text>
+  <text class="ts" x="886" y="322">alpaca · microsoft</text>
+  <text class="ts" x="886" y="338">→ DISPATCH</text>
+
+  <!-- ============ TIER 4 : the outbounds (dialers vs. mihomo's own dial) ============ -->
+  <path class="lnG" d="M 700 356 L 700 380 L 570 380 L 570 404" marker-end="url(#arG)"/>
+  <path class="lnG" d="M 810 356 L 810 404" marker-end="url(#arG)"/>
+  <path class="lnW" d="M 480 356 L 480 376 L 150 376 L 150 404" marker-end="url(#arW)"/>
+  <text class="capO" x="170" y="370">paid, only as fallback</text>
+
+  <!-- LOCAL is the direct lane: it hands the dial to DISPATCH, so HypoMux picks the NIC -->
+  <path class="lnW" d="M 970 356 L 1085 356 L 1085 790 L 1050 790 L 1050 806" marker-end="url(#arW)"/>
+  <text class="capO" x="930" y="374">LOCAL → DISPATCH</text>
+  <text class="capO" x="930" y="388">NIC chosen by HypoMux</text>
+  <text class="cap" x="58" y="642">DISPATCH = fallback [hypomux, DIRECT] — every non-proxied connection, third revision</text>
+  <text class="cap" x="58" y="660">its DIRECT member is deliberate: engine down ⇒ the group degrades to the OS route</text>
+
+  <rect class="bx" x="40" y="406" width="220" height="86" rx="9"/>
+  <text class="tm" x="56" y="430">911 subscription</text>
+  <text class="ts" x="56" y="449">49 anytls nodes</text>
+  <text class="ts" x="56" y="465">paid · 4 of 5 shares</text>
+  <text class="capO" x="56" y="483">dialer-proxy: hypomux (2026-10-11)</text>
+  <text class="cap" x="48" y="508">paid path: NIC-dispatched by HypoMux too</text>
+
+  <rect class="bxL1" x="470" y="406" width="200" height="86" rx="9"/>
+  <text class="tm" x="484" y="430">aliyun-native</text>
+  <text class="ts" x="484" y="449">shadowsocks :443 · free</text>
+  <text class="ts" x="484" y="465">the "1" of the 4:1 mix</text>
+  <text class="capP" x="484" y="483">dialer-proxy: hypomux</text>
+
+  <rect class="bx" x="690" y="406" width="200" height="86" rx="9"/>
+  <text class="tm" x="704" y="430">hy2-upstream</text>
+  <text class="ts" x="704" y="449">hysteria2 · same host</text>
+  <text class="ts" x="704" y="465">QUIC fails the SOCKS hop</text>
+  <text class="capP" x="704" y="483">dialer-proxy: hypomux</text>
+
+  <!-- ============ THE PROXIED DIALS CONVERGE ON HYPO MUX ============ -->
+  <!-- from the two Aliyun upstreams (the members of HYPOMUX-PATH) -->
+  <path class="lnP" d="M 570 492 L 570 530 L 640 530 L 640 556" marker-end="url(#arP)"/>
+  <path class="lnP" d="M 790 492 L 790 540 L 700 540 L 700 556" marker-end="url(#arP)"/>
+
+  <text class="capP" x="600" y="524">carried by dialer-proxy</text>
+  <text class="capP" x="806" y="548">hy2-upstream never wins (QUIC)</text>
+
+  <!-- ============ TIER 5 : HypoMux, the dialer's adapter choice ============ -->
+  <rect class="bxL2" x="470" y="558" width="600" height="94" rx="11"/>
+  <text class="lb" x="492" y="582" fill="#bc8cff">LAYER 2 — NIC DISPATCH (EVERY CONNECTION, DIRECT INCLUDED)</text>
+  <text class="ti" x="492" y="608">HypoMux — mode: proxy · socks5 :10800</text>
+  <text class="ts" x="492" y="628">no TUN · system_proxy_takeover: false · strategy adaptive-throughput, weighted</text>
+  <text class="ts" x="492" y="645">proxied dials via dialer-proxy, direct ones via DISPATCH — the GUI picks the NIC, by hand</text>
+
+  <rect class="bxGrp" x="40" y="694" width="400" height="76" rx="9"/>
+  <text class="lb" x="58" y="717">DATA · LOAD-BALANCE (SQX / DUKASCOPY)</text>
+  <text class="ts" x="58" y="737">filter: 香港|新加坡|日本|德国 — a FEW stable exits, tick-URL</text>
+  <text class="ts" x="58" y="757">check every 600 s; dukascopy.com LOCAL → DATA (fourth change)</text>
+
+  <!-- ================= TIER 6 : NICs ================= -->
+  <path class="lnP" d="M 770 652 L 770 692" marker-end="url(#arP)"/>
+  <path class="lnP" d="M 240 770 L 240 786 L 620 786 L 620 652" marker-end="url(#arP)"/>
+  <rect class="bxExt" x="470" y="694" width="600" height="76" rx="9"/>
+  <text class="tm" x="490" y="718">physical NICs — HypoMux's adapter pool</text>
+  <text class="ts" x="490" y="738">以太网    192.168.1.100    7 of 28-30 sockets (2026-10-11 12:4x)</text>
+  <text class="ts" x="490" y="756">以太网 2  10.90.126.33    22 of 28-30 — both NICs used, paid dials too</text>
+
+  <!-- ================= TIER 7 : destinations ================= -->
+  <path class="ln" d="M 640 770 L 640 806" marker-end="url(#ar)"/>
+  <path class="ln" d="M 830 770 L 830 806" marker-end="url(#ar)"/>
+
+  <rect class="bxExt" x="440" y="808" width="330" height="76" rx="9"/>
+  <text class="tm" x="456" y="832">192.0.2.10:443</text>
+  <text class="ts" x="456" y="852">shadowsocks-rust · BBR (ss wins)</text>
+  <text class="ts" x="456" y="870">→ decapsulates → real target</text>
+
+  <rect class="bxExt" x="790" y="808" width="280" height="76" rx="9"/>
+  <text class="tm" x="806" y="832">direct targets</text>
+  <text class="ts" x="806" y="852">domestic · ibkr · alpaca</text>
+  <text class="ts" x="806" y="870">microsoft (dukascopy: now DATA)</text>
+
+  <!-- ============ THE ONE PATH NO DIALER CAN TAKE OVER ============ -->
+  <rect class="bxExc" x="40" y="808" width="370" height="76" rx="9"/>
+  <text class="lb" x="58" y="831" fill="#d29922">NOT DISTRIBUTABLE — BY CONSTRUCTION</text>
+  <text class="ts" x="58" y="851">ssh -D tunnel :22 — the socket belongs to ssh.exe,</text>
+  <text class="ts" x="58" y="869">so no dialer-proxy can apply. AliyunTunnel task; idle.</text>
+
+  <!-- ssh tunnel noted in DNS lane too: it is exit A -->
+  <text class="capO" x="58" y="800">exit A above (DNS) also uses this tunnel</text>
+
+  <!-- ================= legend ================= -->
+  <text class="capO" x="60" y="904">2026-10-11 12:4x post-switch — engine 28-30 sockets across both NICs, ssh 1, mihomo 0; paid host: mihomo 96 -> engine 95, mihomo 0.</text>
+  <text class="capO" x="60" y="922">2026-10-11 third revision — engine 25 sockets to NON-proxy destinations (19 via 10.90.126.33, 6 via 192.168.1.100), upstream too, mihomo 0.</text>
+  <text class="capO" x="60" y="940">2026-10-11 fourth change — AUTO = 4:1 (4 911 exits by filter: : aliyun-native); 20 connections measured HK 5 · TW 4 · SG 4 · aliyun 4 · MY 3.</text>
+  <text class="cap" x="60" y="958">the first version of that mix named HYPOMUX-PATH and sent 10 of 10 to paid nodes — the group reads unhealthy through the hop, and a load-balance skips it.</text>
+  <line class="lnB" x1="60" y1="970" x2="96" y2="970"/><text class="cap" x="104" y="974">DNS path</text>
+  <line class="lnG" x1="190" y1="970" x2="226" y2="970"/><text class="cap" x="234" y="974">policy decision (mihomo)</text>
+  <line class="lnP" x1="370" y1="970" x2="406" y2="970"/><text class="cap" x="414" y="974">proxied dial through HypoMux (thick)</text>
+  <line class="lnW" x1="660" y1="970" x2="696" y2="970"/><text class="cap" x="704" y="974">not through HypoMux</text>
+
+  <text class="capO" x="60" y="1000">2026-10-11 11:30 (pre-switch) — HypoMux's engine held 21 sockets to 192.0.2.10:443: 17 via 192.168.1.100 (以太网), 4 via 10.90.126.33 (以太网 2). mihomo held zero.</text>
+  <text class="cap"  x="60" y="1020">2026-10-10, the earlier record: mihomo held 0 direct sockets to 192.0.2.10 and 85 to HypoMux:10800; every server socket was owned by hypomux-engine.</text>
+  <text class="cap"  x="60" y="1040">…source-bound to 192.168.1.100 (reported then as 以太网 2). Adapter probes that day: 以太网 10.90.126.200 202 ms · 以太网 2 192.168.1.100 163 ms.</text>
+  <text class="cap"  x="60" y="1060">Loop protection (127/8 · 10/8 · 172.16/12 · 192.168/16 · 169.254/16) stays raw DIRECT — never a dialer hop: through HypoMux it would be an infinite loop.</text>
+  <text class="cap"  x="60" y="1072">A NIC-bound socket cannot reach 127.0.0.1 (the trap this repo's README documents). Only loopback and the private ranges stay off HypoMux; all other direct traffic is dispatched.</text>
+</svg>
+</div>
+
+<!-- ================================================================= -->
+<h2 id="s3"><span class="n">3</span>Resolution — mihomo owns the DNS <i>policy</i> (live: disabled, <code>:53</code> is ICS)</h2>
+
+<p>DNS policy is <b>mihomo's job</b> under the design of record: one owner per job, and no second
+resolver that can bind a literal NIC address and take the machine's DNS down with it. The intended
+shape is mihomo listening on <code>0.0.0.0:53</code> and splitting by destination — domestic names to
+AliDNS/doh.pub, blocked and data names to <code>1.1.1.1</code>/<code>8.8.8.8</code> — with
+<code>respect-rules: true</code> so its own overseas DoH queries obey the routing rules instead of
+being dialled direct and poisoned.</p>
+
+<div class="card warn">
+  <h4>Live state (measured 2026-10-11) — the policy is written, the resolver is not running</h4>
+  <p style="margin-bottom:0">Read this before believing any other page, including this one:
+     <code>runtime\config.yaml</code> still has <code>dns: enable: false</code> (line 106) even though
+     the block is written for <code>listen: 0.0.0.0:53</code> (line 115), and mihomo's own API reports
+     <code>dns: null</code>. UDP <code>:53</code> is held by <b>ICS</b>
+     (<code>svchost -k netsvcs -s SharedAccess</code>, pid 3864, bound <code>0.0.0.0:53</code>) because
+     the hotspot serves its clients there. Resolution today is therefore <b>per adapter</b>:
+     以太网 → <code>192.168.1.1</code> · 以太网 2 → <code>10.90.126.92</code> · WLAN →
+     <code>10.133.221.111</code>. <code>state\dns-backup.json</code> is the rollback record from the
+     SmartDNS era. <b>Open item, not a working resolver</b> — the design keeps DNS policy with mihomo,
+     and this page will not claim the listener is up until it is.</p>
+</div>
+
+<table>
+  <tr><th style="width:170px">Property</th><th>Value</th></tr>
+  <tr><td>Design owner</td><td><b>mihomo</b> — which resolver answers which name is policy, and policy is mihomo's job</td></tr>
+  <tr><td>Intended listener</td><td><code>0.0.0.0:53</code> — written in <code>runtime\config.yaml</code>, <b>not in force</b> (see above)</td></tr>
+  <tr><td>Splits by</td><td><code>nameserver-policy</code>: <code>geosite:cn</code> → AliDNS + doh.pub; <code>geosite:geolocation-!cn</code>, <code>dukascopy.com</code>, the 911 node hosts → <code>1.1.1.1</code> + <code>8.8.8.8</code></td></tr>
+  <tr><td>Scope when live</td><td>the OS resolver <i>and</i> mihomo's own dials (<code>respect-rules: true</code>) — which is what keeps a poisoned answer from reaching a dial</td></tr>
+  <tr><td>Because</td><td>with SmartDNS-rs gone there is no resolver binding literal NIC addresses (it panicked on <code>os error 10049</code> when a NIC lost its lease) and no upstream-proxy hop for the ssh -D tunnel</td></tr>
+</table>
+
+<h3>Historical — SmartDNS-rs, the layer this replaced</h3>
+<table>
+  <tr><th style="width:170px">Property</th><th>Value</th></tr>
+  <tr><td>Service</td><td><code>smartdns-rs</code> — <b>Disabled</b> (retired 2026-10-10; DNS policy moved to mihomo)</td></tr>
+  <tr><td>Listens</td><td><i>nothing — the service is not running</i></td></tr>
+  <tr><td>Live config</td><td><code>C:\ProgramData\smartdns\smartdns.conf</code></td></tr>
+  <tr><td>Source config</td><td><code>archive\smartdns\smartdns.conf</code> (was the project root)</td></tr>
+  <tr><td>Deploy</td><td>retired — <code>archive\smartdns\Deploy-SmartDnsConfig.ps1</code></td></tr>
+</table>
+
+<h3>Behaviour — as measured while SmartDNS-rs was in the path (2026-10-10)</h3>
+<ul>
+  <li>Domestic domains → AliDNS + doh.pub over DoH, direct (~45 ms).</li>
+  <li>Poisoned overseas domains → resolved <b>through the Aliyun tunnel</b>, returning real IPs.</li>
+  <li>~20 targeted <code>address /domain/#6</code> rules eliminate pointless AAAA lookups (one saved 516 ms).</li>
+  <li>Cache 32768, prefetch, <code>serve-expired</code> to bridge tunnel outages.</li>
+</ul>
+
+<div class="card warn">
+  <h4>Traps this page keeps — the non-obvious DoH requirement</h4>
+  <p>Overseas upstreams must use an <b>IP literal plus <code>-host-name</code></b>:</p>
+<pre><code># works — no bootstrap resolution needed
+server-https https://1.1.1.1/dns-query -host-name cloudflare-dns.com -proxy aliyun -group overseas
+
+# silently fails — bootstrap resolution of the hostname gets poisoned
+server-https https://cloudflare-dns.com/dns-query -proxy aliyun -group overseas</code></pre>
+  <p style="margin-bottom:0">The second form produced <i>no results at all</i> until I switched to the
+     first. The same trap applies to <b>mihomo's</b> DoH entries in <code>nameserver-policy</code>,
+     which is exactly what <code>default-nameserver</code> (plain <code>223.5.5.5</code> /
+     <code>119.29.29.29</code>) exists to bootstrap. (The SmartDNS form above is retired; the trap is
+     not.)</p>
+</div>
+
+<!-- ================================================================= -->
+<h2 id="s4"><span class="n">4</span>Policy — mihomo, the system proxy</h2>
+
+<table>
+  <tr><th style="width:170px">Property</th><th>Value</th></tr>
+  <tr><td>Binary</td><td><code>C:\Users\victo\mihomo\runtime\mihomo.exe</code> v1.19.32</td></tr>
+  <tr><td>Config</td><td><code>C:\Users\victo\mihomo\runtime\config.yaml</code></td></tr>
+  <tr><td>Listens</td><td><code>127.0.0.1:7897</code> (mixed), <code>127.0.0.1:9097</code> (API); DNS is intended on <code>0.0.0.0:53</code> but is <b>not live</b> — <code>:53</code> belongs to ICS (section 3)</td></tr>
+  <tr><td>System proxy</td><td><b>mihomo is the Windows system proxy</b> (registry <code>ProxyEnable=1</code> → <code>127.0.0.1:7897</code>); HypoMux never takes it over (<code>system_proxy_takeover: false</code>)</td></tr>
+  <tr><td>TUN</td><td><code>tun.enable: false</code> — <b>no TUN anywhere</b>, on either component</td></tr>
+  <tr><td>Dialer</td><td><code>dialer-proxy: hypomux</code> on the Aliyun-reaching outbounds, and the <code>DISPATCH</code> group (<code>fallback [hypomux, DIRECT]</code>) for everything that is not proxied — since the third revision HypoMux is the hop for every connection mihomo handles</td></tr>
+  <tr><td>Supervisor</td><td><code>mihomo-supervisor.ps1</code> — restart-on-crash, log rotation</td></tr>
+  <tr><td>Task</td><td><code>MihomoSplitter</code> — <b>SYSTEM, at boot +30 s</b></td></tr>
+</table>
+
+<h3>Rule wiring — current state after both 2026-10-11 decisions</h3>
+<table>
+  <tr><th>Target</th><th style="width:60px">Count</th><th>Contents</th></tr>
+  <tr><td><code>AUTO</code></td><td>37</td><td>google, googleapis, googlevideo, gstatic, ggpht, youtube, ytimg, yahoo, yimg, twitter/x, twimg, facebook, fbcdn, instagram, telegram, t.me, wikipedia, openai, anthropic, claude.ai, bbc, nytimes, reddit, medium, githubusercontent — these rows are unchanged by the fourth change; what they <b>resolve through</b> is not: <code>AUTO</code> is now the 911-first 4:1 mix (see section 11)</td></tr>
+  <tr><td><code>DISPATCH</code> (Microsoft pins)</td><td>6</td><td><code>microsoft.com</code>, <code>windowsupdate.com</code>, <code>windows.com</code>, <code>msftconnecttest.com</code>, <code>msftncsi.com</code>, <code>microsoftstore.com</code> — hand-written 2026-10-11, placed <b>above</b> the auto-learner and above the 911 rule set (first match wins); they targeted <code>DIRECT</code> until the third revision moved them to <code>DISPATCH</code> (same intent — not proxied — but the NIC is HypoMux's). The learner had learned <code>windows.com</code> and <code>msftncsi.com</code> as "direct failed → proxy", and the 911 list itself carries <code>windows.com</code>; the learner's explicit-rule guard then reports hand-written rules for review instead of overriding them. Measured reason: the Store downloads from a domestic CDN at ~17.8 MB/s.</td></tr>
+  <tr><td><code>AUTO</code> (Copilot exception)</td><td>1</td><td><code>copilot.microsoft.com</code> — the one Microsoft host that goes to <code>AUTO</code>, placed <i>first</i> of the pins, deliberately. Verified: <code>match Domain(copilot.microsoft.com) using AUTO[aliyun-native]</code>.</td></tr>
+  <tr><td><code>RULE-SET,clashmi-911</code></td><td><b>354</b></td><td>the 911 subscription's own must-proxy list, lifted out of its <code>rules:</code> block by the new <code>tools\Update-Clashmi911Rules.ps1</code> into <code>runtime\rules\clashmi-911.yaml</code> (329 <code>DOMAIN-SUFFIX</code>, 13 <code>DOMAIN-KEYWORD</code>, 12 <code>DOMAIN</code>) and referenced as <code>RULE-SET,clashmi-911,AUTO</code>. Its 197 <code>DIRECT</code> entries, its CN/private entries and its <code>MATCH,OpenConnectUs911</code> tail are dropped on purpose — that tail is what proxied everything. Placed after our own rules (loop-protection included) and immediately before the catch-all.</td></tr>
+  <tr><td><code>RULE-SET,autolearn-*</code></td><td>2 sets</td><td>the learner: <code>autolearn-paid,PAID</code> then <code>autolearn-direct,AUTO</code> — a destination direct cannot reach is what <code>autolearn-direct</code> catches, now that the catch-all no longer proxies it for you.</td></tr>
+  <tr><td><code>LOCAL</code></td><td>29</td><td>cn, baidu, qq, tencent, taobao, alibaba, aliyun, bilibili, jd, futunn, eastmoney, sina, xueqiu, deepseek, microsoft, windowsupdate, msftconnecttest, <b>ibkr, ibllc, alpaca, strategyquant</b>, schwab, tradestation, thetadata, massive, worldquantbrain, github — <b>not proxied</b>, and since the third revision <code>LOCAL = select [DISPATCH, DIRECT]</code>, so their NIC is HypoMux's. <b><code>dukascopy</code> left this row on 2026-10-11</b> (fourth change): the whole suffix routes to <code>DATA</code> now, so it <i>is</i> proxied</td></tr>
+  <tr><td><code>DATA</code></td><td>3</td><td><code>DOMAIN,datafeed.dukascopy.com</code>, <code>DOMAIN,freeserv.dukascopy.com</code> and — added by the fourth change — <code>DOMAIN-SUFFIX,dukascopy.com</code>, so the Dukascopy website is proxied too (owner: <i>"give sqx datadownload all from proxy (dispatch NIC by hypomux as always)"</i>). <b>Proxied, but not through the 4:1 mix</b>: <code>DATA = load-balance round-robin</code> over <code>filter: "香港|新加坡|日本|德国"</code>, health-checked on a real Dukascopy tick URL every 600 s, because bulk downloads want a few stable exits (Dukascopy terminates TLS from bursty/multi-IP sources — 1,138 of those in SQX's log)</td></tr>
+  <tr><td><code>DIRECT</code></td><td>4</td><td><code>127/8</code>, <code>10/8</code>, <code>172.16/12</code>, <code>192.168/16</code> (plus link-local <code>169.254/16</code>) — <b>loop protection only</b>, and now the only rules still on the plain OS route</td></tr>
+  <tr><td><code>DISPATCH</code> (DeepSeek)</td><td>2</td><td><code>DOMAIN-SUFFIX,deepseek.com</code> + <code>DOMAIN-KEYWORD,deepseek</code> — dispatched, not proxied (they targeted <code>DIRECT</code> before the third revision)</td></tr>
+  <tr><td><code>MATCH</code></td><td>1</td><td><b><code>DISPATCH</code></b> — the catch-all since the third revision of 2026-10-11: everything a rule does not name is handed to HypoMux as a plain dial, from the adapter it picks. <i>History, in order:</i> <code>MATCH,LOCAL</code> in the first design, <code>MATCH,HYPOMUX-PATH</code> after the renewal that morning, <code>MATCH,DIRECT</code> later that day (owner: "don't proxy everything, just ref 911 connect rules, that leave the most traffic direct visit"), then <code>MATCH,DISPATCH</code> (owner: "the hypomux dispatch all the traffics to the NICs").</td></tr>
+</table>
+
+<p>Everything a rule can point at is either a <b>policy</b> choice (which upstream, free vs paid),
+<code>DISPATCH</code> (not proxied, NIC chosen by HypoMux) or raw <code>DIRECT</code> (loop protection
+only). No rule points at a per-NIC outbound under this design — the ones that
+used to exist are retired and recorded in section 5.</p>
+
+<div class="card ok">
+  <h4>The live proof, from mihomo's own log (<code>match &lt;rule&gt; using &lt;outbound&gt;</code>)</h4>
+<pre><code>www.163.com                     -> match Match using DISPATCH[hypomux]      (third revision: unlisted, dispatched NOT proxied)
+displaycatalog.mp.microsoft.com -> match DomainSuffix(microsoft.com) using DISPATCH[hypomux]
+download.windowsupdate.com      -> match DomainSuffix(windowsupdate.com) using DISPATCH[hypomux]
+api.deepseek.com                -> match DomainSuffix(deepseek.com) using DISPATCH[hypomux]
+copilot.microsoft.com           -> match Domain(copilot.microsoft.com) using AUTO[aliyun-native]   (the exception)
+www.youtube.com                 -> match DomainSuffix(youtube.com) using AUTO[aliyun-native]
+futuhk.com                      -> match RuleSet(clashmi-911) using AUTO[aliyun-native]
+
+--- second revision (MATCH,DIRECT), kept as the dated record:
+www.speedtest.net               -> match Match using DIRECT              (unlisted foreign host; then on the OS route)
+futuhk.com · futu.link          -> match RuleSet(clashmi-911) using AUTO  (present ONLY in the 911 list)
+partneradvantage.goog           -> match RuleSet(clashmi-911) using AUTO
+download.windowsupdate.com      -> match DomainSuffix(windowsupdate.com) using DIRECT
+displaycatalog.mp.microsoft.com -> match DomainSuffix(microsoft.com) using DIRECT</code></pre>
+  <p style="margin-bottom:0">The <code>AUTO[aliyun-native]</code> lines say the proxied path is
+     untouched <i>in mechanism</i>: a rule-named destination is still proxied down the Aliyun path,
+     dialled by HypoMux — the Aliyun sockets still belong to <code>hypomux-engine</code> and mihomo
+     holds none. Those readings predate the fourth change, when the group <i>was</i> that single
+     member; under the 4:1 mix the same rule resolves to whichever of the five round-robin picked,
+     so the proportion changed (4 in 5 now paid) while the dial did not.
+     The <code>DISPATCH[hypomux]</code> lines are the third revision: the destination is not proxied,
+     and HypoMux still opens the socket. Dispatch proof at the socket level: the engine held
+     <b>25 sockets to non-proxy destinations</b> (19 via <code>10.90.126.33</code>, 6 via
+     <code>192.168.1.100</code>) while owning every upstream socket too (Aliyun 5, paid
+     <code>112.91.92.129</code> = 50) and mihomo held <b>0</b> on those hosts. Re-verified after the
+     fourth change: <code>hypomux-engine</code> owns every upstream socket (<b>30</b> non-loopback
+     sockets at the check) and mihomo holds <b>0</b> on the Aliyun and 911 hosts.
+     <code>AUTO</code>'s health-check interval is <b>60 s</b> now, not 120 (measured:
+     after a config reload the free group reads unhealthy for a moment and traffic parked on a paid
+     node until its next scheduled check — 60 s halves that window; the interval survives the mix,
+     and the mix sets <code>lazy: false</code> because a load-balance needs live health data to skip
+     a dead exit).</p>
+</div>
+
+<div class="card bad">
+  <h4>Why the DIRECT rules are mandatory — not routing, safety</h4>
+  <p>mihomo dials the HypoMux SOCKS5 endpoint at <code>127.0.0.1:10800</code> — that is what
+     <code>dialer-proxy: hypomux</code> means, and the <code>DISPATCH</code> group dials it too —
+     and the SSH tunnel at <code>127.0.0.1:1080</code>.
+     Point a rule at the proxied path for <code>127.0.0.0/8</code> and mihomo is asking a dialer to
+     reach an address on this machine: a NIC-bound socket cannot reach <code>127.0.0.1</code>, and
+     aiming the dialer's own endpoint at the dialer is a loop. They carry <code>no-resolve</code> for
+     the same reason.</p>
+  <p style="margin-bottom:0">This was a real bug in an earlier revision, and it is why the
+     loop-protection rules are re-checked on <i>any</i> group change: <code>LOCAL</code> existed but
+     <b>zero rules referenced it</b>, so every non-proxied connection silently bypassed the intended
+     path. Under the renewal the same trap applies to <code>HYPOMUX-PATH</code>, and since the third
+     revision it applies to <code>DISPATCH</code> as well — neither may become
+     the target of a rule that can carry loopback or the private ranges. Because the catch-all is
+     <code>MATCH,DISPATCH</code>, the <i>default</i> is not safe by construction any more; these
+     rules are what keeps a destination addressed by IP off the dialer, and they stay. They are also
+     now the <b>only</b> rules that still follow the plain OS route.</p>
+</div>
+
+<div class="card ok">
+  <h4>Quota isolation — structural, not procedural</h4>
+  <p><code>AUTO</code> is <b>not</b> <code>url-test</code>, and it never was: under the free-first era
+     it was a <code>fallback</code> that walked <code>HYPOMUX-PATH</code> (the free Aliyun path) first
+     and the <code>clashmi</code> provider after it, so the metered plan was reached only after the
+     free path had failed. <b>The fourth change of 2026-10-11 reversed that ordering on purpose</b>:
+     <code>AUTO</code> is now a <code>load-balance</code> on <code>round-robin</code> whose four
+     911 exits (chosen by <code>filter:</code>) outnumber <code>aliyun-native</code> four to one, so
+     <b>4 of every 5 proxied connections spend the metered plan</b> and the free share is what keeps
+     that path exercised. The ratio is by member count, because mihomo groups have no weights; a
+     rename in the subscription silently shrinks it (open item, <code>docs\TODO.md</code> P0e).</p>
+  <p style="margin-bottom:0"><code>LOCAL</code> — the direct lane — is
+     <code>select [DISPATCH, DIRECT]</code> (it was <code>select [DIRECT]</code>) and holds no paid
+     member, so it <i>physically cannot</i> spend the
+     subscription. The previous design's deliberate 1:1 spend (<code>MIX = [HY2LB, PAID]</code>) and
+     the 40 GB byte-counting guard that bounded it were <b>retired together on 2026-10-11</b>: the
+     <code>MIX</code> ring is gone from the config and the guard lived in the watcher that no longer
+     runs. So the mix is not guarded by counting at all — the guard question is an <b>open
+     decision</b> (section 10, <code>docs\TODO.md</code> P0e), and it matters more now than it did
+     under free-first ordering.</p>
+</div>
+
+<!-- ================================================================= -->
+<h2 id="s5"><span class="n">5</span>NIC dispatch — HypoMux's job, owned by its GUI</h2>
+
+<p>Under the design of record HypoMux decides which adapter each dial leaves by — <b>every</b>
+connection: proxied dials go through it because mihomo dials <code>127.0.0.1:10800</code> (its
+<code>dialer-proxy</code>), and everything not proxied goes through the <code>DISPATCH</code> group,
+where the same listener is used as a plain dialer. HypoMux opens the
+socket from the adapter it picks, measuring each adapter and applying its own strategy and
+weights. Only loopback and the private ranges stay off it — they remain raw
+<code>DIRECT</code> on the OS route.</p>
+
+<div class="card warn">
+  <h4>Retired 2026-10-11: the previous design's machinery, and how it went</h4>
+  <p style="margin-bottom:0">The generated per-NIC outbounds
+     (<code>aliyun-nic9</code>/<code>aliyun-nic26</code>, <code>hy2-nic9</code>/<code>hy2-nic26</code>,
+     each with <code>interface-name: 以太网</code> / <code>以太网 2</code>), the <code>HY2LB</code> and
+     <code>DIRECT-LB</code> rings, the <code>MIX</code> ring, and the <code>AdapterMonitor</code> watcher
+     (<code>src\proxy\Watch-Adapters.ps1</code>) that measured adapters and rewrote those rings were
+     <b>all present in <code>runtime\config.yaml</code> until 12:2x on 2026-10-11, and all of them are
+     gone now</b>: the <code>GENERATED:PROXIES</code>/<code>:AUTO</code>/<code>:LOCAL</code> bodies hold a
+     legacy note only (the six marker lines are byte-identical), and the watcher's task is
+     <code>Disabled</code> with zero <code>Watch-Adapters</code> processes.
+     <code>hypomux-distribution.ps1</code> (no arguments; <code>-Check</code> gates on 10800,
+     <code>-Restore</code> undoes, <code>-DryRun</code>/<code>-NoReload</code>/<code>-ConfigPath</code>/
+     <code>-Summary</code> review a scratch copy) is the tested switch that did it — it never starts,
+     stops or reconfigures HypoMux (the GUI owns it), it validates (structural self-check +
+     <code>mihomo -t</code> + no-legacy-names) <b>before</b> stopping the watcher, it reloads via the API,
+     it verifies the proxy 204 <b>and the socket acceptance test</b>, and it rolls config + mihomo +
+     watcher back on any failure. A second run left the config byte-identical (idempotent).</p>
+</div>
+
+<h3>The previous design's rings — the record of what was retired, and why</h3>
+<table>
+  <tr><th style="width:190px">Ring</th><th>Strategy</th><th>What it spread — and its status now</th></tr>
+  <tr><td><code>HY2LB</code></td><td><code>round-robin</code></td><td>the proxied traffic of the per-NIC hysteria2 outbounds (<code>hy2-nic5</code>, <code>hy2-nic50</code> as generated then; <code>hy2-nic9</code>/<code>hy2-nic26</code> in the live config until the switch). <b>Retired 2026-10-11</b> — and never on the design's path: hysteria2 is QUIC and cannot traverse the TCP SOCKS hop.</td></tr>
+  <tr><td><code>DIRECT-LB</code></td><td><code>round-robin</code></td><td><b>ordinary</b> traffic: the catch-all <i>was</i> <code>MATCH,LOCAL</code> and <code>LOCAL</code> selected <code>DIRECT-LB</code>, so non-proxied connections used both adapters instead of following the interface metric. Measured: 11 connections on <code>direct-nic5</code>, 5 on <code>direct-nic50</code> in one sample. <b>Retired 2026-10-11</b> — ordinary traffic is on plain <code>DIRECT</code> now, and per-NIC balance of <i>proxied</i> traffic belongs to HypoMux.</td></tr>
+  <tr><td><code>MIX</code></td><td><code>round-robin</code></td><td>free vs paid, per connection — half the destinations on the metered plan, bounded by the spend guard. <b>Retired 2026-10-11</b>: <code>AUTO</code> became <code>fallback [HYPOMUX-PATH]</code> + <code>use: [clashmi]</code> (free-first), and the fourth change later replaced <i>that</i> with the 911-first 4:1 <code>load-balance</code> — which spreads free vs paid per connection again, but 1:4 and with no guard. The guard went with the watcher — open question, section 10.</td></tr>
+  <tr><td><code>AUTO</code> <span class="tag">now</span></td><td><code>round-robin</code></td><td><b>not a legacy ring — the current proxy path</b>, and the deliberate re-run of the MIX idea: four 911 exits (<code>filter:</code>) against one <code>aliyun-native</code>, <b>4:1</b>, so 4 of every 5 proxied connections spend the metered plan. Unlike <code>MIX</code> it is not backed by a guard at all (the guard died with the watcher), and unlike <code>MIX</code> it selects its paid members by regex so a subscription rename cannot invalidate the config — it only shrinks the ratio.</td></tr>
+  <tr><td><code>PAID</code></td><td><code>round-robin</code></td><td>all 49 subscription nodes, so paid traffic is not pinned to whichever node a fallback picked. Kept.</td></tr>
+  <tr><td><code>DATA</code></td><td><code>round-robin</code> (was <code>fallback</code>)</td><td>SQX/Dukascopy only — a <b>few stable exits</b>, not one and not 49: <code>filter: "香港|新加坡|日本|德国"</code>, because Dukascopy's edge terminates TLS handshakes from bursty multi-IP sources (SQX logged 1,138 of them) and a single IP hits its per-IP 429. Health-checked on a real Dukascopy tick URL every 600 s. Since the fourth change the whole of <code>dukascopy.com</code> routes here, website included. Kept — and deliberately <b>not</b> the 4:1 mix.</td></tr>
+</table>
+
+<p>Loopback and the private ranges stay on raw <code>DIRECT</code>: a NIC-bound socket cannot reach
+<code>127.0.0.1</code>, which is the trap this project's README documents — and it is why neither the
+dialer's own endpoint nor the loop-protection ranges may ever be handed to HypoMux. Traffic that
+bypasses mihomo entirely (Windows Update, Delivery Optimization, anything not using the system proxy)
+still follows the OS interface metric and stays on <code>以太网</code>; with no TUN anywhere, that is out
+of scope <b>by choice</b> — HypoMux sees everything mihomo handles, and nothing that ignores the Windows
+system proxy.</p>
+
+<h3>HypoMux as deployed</h3>
+<table>
+  <tr><th style="width:170px">Property</th><th>Value</th></tr>
+  <tr><td>Mode</td><td><code>mode: proxy</code> — no TUN, and it does <b>not</b> take the system proxy (<code>system_proxy_takeover: false</code>); mihomo is the system proxy</td></tr>
+  <tr><td>Serves</td><td><code>127.0.0.1:10800</code> SOCKS5 (the dialer mihomo uses), <code>127.0.0.1:10801</code> HTTP</td></tr>
+  <tr><td>Owns</td><td>NIC dispatch for every connection mihomo handles — proxied dials via <code>dialer-proxy</code>, direct ones via <code>DISPATCH</code> — plus adapter measurement, weights, strategy</td></tr>
+  <tr><td>Own routing</td><td>per-domain / per-process / per-IP rules inside HypoMux, and it learns dead domain↔link pairs (<code>blocked_domain_bypass: true</code>) — it source-binds the socket to the NIC it picks. Kept from the 2026-10-10 record.</td></tr>
+  <tr><td>GUI</td><td><code>C:\Program Files\HypoMux\hypomux.exe</code> — <b>the operator of record</b>; no script in this repo drives it</td></tr>
+  <tr><td>Engine</td><td><code>C:\ProgramData\HypoMux\Core\bin\hypomux-engine.exe</code></td></tr>
+  <tr><td>Control pipe</td><td><code>\\.\pipe\HypoMux-Core-Service</code> — belongs to the <i>idle</i> service engine, not to the GUI's engine</td></tr>
+  <tr><td>Settings</td><td><code>C:\Users\victo\.hypomux\settings.json</code></td></tr>
+  <tr><td>Tuners</td><td><code>tune-hypomux.ps1</code>, <code>patch-hypomux.ps1</code></td></tr>
+</table>
+
+<div class="card bad">
+  <h4>Why NIC selection cannot be automated from this repo (measured 2026-10-11)</h4>
+  <p>The GUI owns the engine: <code>hypomux-engine.exe</code> (pid 23188) is a <b>child of</b>
+     <code>hypomux.exe</code> (pid 16456) and is driven over the GUI's stdio channel — the same
+     line-delimited JSON protocol (<code>engine.hello</code>, <code>engine.start mode=proxy</code>)
+     that <code>hypomux-serve.ps1</code> speaks.</p>
+  <p>There is <b>no control API</b>: <code>10801</code> is the HTTP <i>proxy</i> port and answers
+     <code>502</code> to proxy-style requests, the GUI opens no listening socket of its own, and the
+     only named pipe is <code>\\.\pipe\HypoMux-Core-Service</code> — the idle service engine, with
+     zero connections. The one programmatic route, <code>hypomux-serve.ps1</code>, spawns a
+     <b>separate</b> engine that cannot bind <code>10800</code> while the GUI's engine holds it and
+     that the GUI shows nothing about — the operator would be watching a different process than the one
+     carrying traffic.</p>
+  <p style="margin-bottom:0"><b>Consequence: NIC dispatch is human-controlled in the GUI.</b> Repo
+     scripts must not start, stop or reconfigure HypoMux — and <code>hypomux-distribution.ps1</code>
+     does not: it only <b>gates</b> on <code>127.0.0.1:10800</code> and tells the operator to launch
+     the GUI, while <code>hypomux-serve.ps1</code> is kept as the record of the engine's own
+     protocol.</p>
+</div>
+
+<h3>Settings the GUI owns — and the 2026-10-11 reading</h3>
+<table>
+  <tr><th>Setting</th><th>Was</th><th>Now</th><th>Why</th></tr>
+  <tr><td><code>mode</code></td><td>—</td><td><b><code>proxy</code></b></td><td>the design's operating mode: mihomo is the system proxy, so HypoMux must not capture traffic; no TUN anywhere</td></tr>
+  <tr><td><code>system_proxy_takeover</code></td><td><code>true</code></td><td><code>false</code></td><td>was fighting mihomo for the Windows system proxy</td></tr>
+  <tr><td><code>dns_server</code> / <code>dns_policy</code></td><td><code>223.5.5.5</code> / <code>auto</code></td><td><code>127.0.0.1</code> / <code>off</code></td><td>its own resolver returned <b>poisoned</b> IPs, so proxied traffic through it failed</td></tr>
+  <tr><td><code>selected_adapter_ids</code></td><td><code>以太网, WLAN</code></td><td><code>以太网, 以太网 2</code> (2026-10-10) → <code>["以太网 2"]</code> (2026-10-11 11:15)</td><td><code>WLAN</code> no longer exists — it was round-robining onto a dead adapter. <b>Trap:</b> on 2026-10-11 the file said one adapter while the engine used <b>both</b> (section 9), so the stored selection is intent, not what governs.</td></tr>
+  <tr><td><code>strategy</code></td><td><code>round-robin</code></td><td><code>latency-first</code> (2026-10-10) → <b><code>adaptive-throughput</code></b>, <code>weighted: true</code> (2026-10-11 11:15)</td><td>per-NIC latency differs by destination (see below), so round-robin across adapters was harmful; the newer setting is what the GUI actually reports now</td></tr>
+  <tr><td><code>blocked_domain_bypass</code></td><td><code>false</code></td><td><code>true</code></td><td>learn which links cannot reach a domain and stop using them</td></tr>
+</table>
+
+<p>Valid <code>strategy</code> values, extracted from the GUI binary:
+<code>round-robin</code> · <code>weighted</code> · <code>adaptive-throughput</code> ·
+<code>latency-first</code> · <code>fixed</code></p>
+
+<h3>Why per-NIC choice matters — the asymmetry (measured 2026-10-10, when it was <code>latency-first</code>)</h3>
+<table>
+  <tr><th>Target</th><th>以太网</th><th>以太网 2</th><th></th></tr>
+  <tr><td>aliyun LA</td><td>241 ms</td><td><b>227 ms</b></td><td></td></tr>
+  <tr><td>baidu</td><td>55 ms</td><td><b>45 ms</b></td><td></td></tr>
+  <tr><td><b>eastmoney</b></td><td><b>82 ms</b></td><td>270 ms</td><td><span class="tag warn">3.3× asymmetry</span></td></tr>
+  <tr><td>ibkr</td><td>110 ms</td><td><b>77 ms</b></td><td></td></tr>
+</table>
+<p><code>round-robin</code> sent eastmoney down the 270 ms path half the time — actively harmful, and
+it explains why aggregation first measured as "no benefit". It is the measurement that says adapter
+choice is a per-destination decision, which is why it belongs to HypoMux's own measurement loop rather
+than to a round-robin ring in mihomo's config.</p>
+
+<div class="card warn">
+  <h4>Startup timing — the constraint that shapes the design (measured 2026-10-10)</h4>
+<pre><code>boot   → HypoMuxCore service starts …… IDLE (10 MB, binds nothing)
+login  → hypomux.exe --silent → ports 10800/10801 come up</code></pre>
+  <p style="margin-bottom:0">Verified by experiment: kill the GUI → ports drop to 0;
+     relaunch <code>--silent</code> → ports return in 25 s with <b>zero clicks</b>. The engine service
+     alone never accelerates — it is idle and binds nothing. Under the renewal this is a
+     <b>startup dependency</b>, not a curiosity: with <code>dialer-proxy: hypomux</code> on the Aliyun
+     outbounds, a closed <code>10800</code> fails every proxied dial. And measured 2026-10-11 there is
+     <b>no autostart registered</b> for the GUI (no <code>Run</code> key, no startup shortcut), so the
+     login line above is the earlier reading — today the GUI must be launched by hand (section 8).</p>
+</div>
+
+<!-- ================================================================= -->
+<h2 id="s6"><span class="n">6</span>Transport — the Aliyun upstreams</h2>
+
+<p>Host <code>192.0.2.10</code> · Alibaba Cloud US, Los Angeles · AS45102 ·
+2 vCPU / 1871 MB · Alibaba Cloud Linux 3 (glibc <b>2.32</b>)</p>
+
+<p>The design's path used to be <code>HYPOMUX-PATH</code> = <code>fallback [hy2-upstream, aliyun-native]</code>,
+and both members are <b>dialled</b> through HypoMux — that is the mechanism by which the chain
+reaches the adapters. Since the fourth change <code>AUTO</code> (the group every proxied rule
+resolves through) is the 911-first 4:1 mix instead, and it names <code>aliyun-native</code>
+directly, so this group is defined but no longer on the routing path.</p>
+
+<h3>6a. PRIMARY — native shadowsocks <code>aliyun-native</code></h3>
+<table>
+  <tr><th style="width:170px">Property</th><th>Value</th></tr>
+  <tr><td>Dialer</td><td><b><code>dialer-proxy: hypomux</code></b> — mihomo chooses this upstream; HypoMux chooses the adapter the socket leaves by</td></tr>
+  <tr><td>Server</td><td><code>/usr/local/bin/ssserver</code> — shadowsocks-rust <b>v1.25.0</b>, static musl</td></tr>
+  <tr><td>Config</td><td><code>/etc/shadowsocks-rust/config.json</code></td></tr>
+  <tr><td>Service</td><td><code>shadowsocks-rust.service</code> — <b>active / enabled</b></td></tr>
+  <tr><td>Listens</td><td><code>0.0.0.0:443</code> · RSS <b>11.4 MB</b></td></tr>
+  <tr><td>Cipher</td><td><code>2022-blake3-aes-128-gcm</code></td></tr>
+  <tr><td>Server tuning</td><td><b>BBR</b> + <code>tcp_fastopen=3</code></td></tr>
+</table>
+
+<h3>6a-ii. <code>hy2-upstream</code> — in the group, never the winner</h3>
+<p>The same host also serves <b>hysteria2</b>, and it is <code>HYPOMUX-PATH</code>'s first member —
+but it can never win while the dial goes through HypoMux: hysteria2 is <b>QUIC/UDP</b> and cannot
+traverse a TCP SOCKS hop. Measured and recorded in the live config: <code>aliyun-native 522 ms,
+hy2-upstream FAILED</code>. So the fallback resolves to the ss path — which is exactly the one
+HypoMux distributes. <i>(The per-NIC ring <code>HY2LB</code> was the previous design's
+attempt to use hysteria2 across adapters; retired with the rest of that machinery on 2026-10-11, and
+it could not have worked on this path either.)</i></p>
+
+<div class="card info">
+  <h4>Why port 443 — discovering the security group without console access</h4>
+  <p>Probing from Windows and distinguishing <code>REFUSED</code> from <code>TIMEOUT</code>
+     revealed which ports the Aliyun security group allows:</p>
+  <table style="margin:10px 0">
+    <tr><th>Port</th><th>Result</th><th>Meaning</th></tr>
+    <tr><td>22</td><td><span class="tag ok">OPEN</span></td><td>sshd listening</td></tr>
+    <tr><td><b>443</b></td><td><span class="tag warn">REFUSED</span></td><td>packet <b>reached the host</b> → <b>allowed</b>, nothing bound</td></tr>
+    <tr><td><b>8080</b></td><td><span class="tag warn">REFUSED</span></td><td><b>allowed</b></td></tr>
+    <tr><td>8388</td><td><span class="tag bad">TIMEOUT</span></td><td>dropped by the security group</td></tr>
+    <tr><td>8443 / 2096</td><td><span class="tag bad">TIMEOUT</span></td><td>dropped</td></tr>
+  </table>
+  <p style="margin-bottom:0"><code>REFUSED</code> = reachable, no listener.
+     <code>TIMEOUT</code> = filtered. Moving the service to 443 was the entire fix —
+     no console access required.</p>
+</div>
+
+<h3>Why this replaced <code>ssh -D</code> — the reason is the whole point</h3>
+<div class="diagram">ssh -D tunnel — NOT DISTRIBUTABLE:
+  mihomo ─► socks5 127.0.0.1:1080 ─► ssh.exe opens its OWN socket
+                                       └─ 1 multiplexed connection
+                                          ✗ the socket is ssh.exe's — no dialer-proxy applies
+                                          ✗ nothing for HypoMux to spread
+                                          ✗ TCP-in-TCP penalty
+
+native shadowsocks — the design's path:
+  mihomo ─► dials the HypoMux SOCKS5 endpoint ─► dialer-proxy: hypomux
+                                       └─ N connections, one per stream
+                                          ✓ HypoMux opens each upstream socket from the NIC it picks</div>
+
+<p>Measured proof — first block as read on 2026-10-10, second under the renewal:</p>
+<pre><code>2026-10-10
+  mihomo sockets to 192.0.2.10 directly : 0
+  mihomo sockets to 127.0.0.1:10800 (hypo) : 72
+  HypoMux socket : 192.168.1.100:60236 -> 192.0.2.10:443
+                   ^^^^^^^^^^^^^^^ source-bound, reported then as 以太网 2
+  mihomo chain   : mtalk.google.com -> aliyun-native <- AUTO
+
+2026-10-11 11:30
+  HypoMux engine : 21 sockets to 192.0.2.10:443
+                   17 via 192.168.1.100 (以太网) · 4 via 10.90.126.33 (以太网 2)
+  mihomo         : 0 sockets to 192.0.2.10 — it holds only the dial to :10800
+  mihomo chain   : &lt;domain&gt; -> aliyun-native <- HYPOMUX-PATH (now = aliyun-native)
+                   (that reading predates the fourth change: AUTO is the 4:1 mix now,
+                    so the chain ends at whichever of its five members was picked)</code></pre>
+
+<h3>6b. SECONDARY — SSH SOCKS tunnel <code>aliyun-la</code>, kept for independence</h3>
+<p>Still running (<code>AliyunTunnel</code> task, SYSTEM, boot +10 s, self-heals in ~3 s) and defined
+as an outbound, but reachable only through the manual <code>PROXY</code> select group — no rule points
+at it. Its value under this design is exactly that: it is the one free proxy path that does <b>not</b>
+depend on HypoMux, which matters for every proxied destination now that the rule set — the 911 list
+included — is what puts traffic there.</p>
+
+<h3>6c. PAID — 911 subscription</h3>
+<p><code>&lt;911-subscription-URL&gt;</code> → 49 <code>anytls</code> nodes on
+<code>ctat01.node01234.us</code>, loaded as provider <code>clashmi</code> (the 911 config's own group
+name is <code>OpenConnectUs911</code>); <code>11.</code> and <code>15.</code> are mirrors of the same
+service. Measured: anytls opens <b>one TCP connection per stream</b> (42 sockets for 6 concurrent
+requests) — genuinely independent connections, so in principle spreadable.</p>
+<p><b>Now on the design's dialer path — measured, 2026-10-11.</b> The provider override in the live
+config carries <code>dialer-proxy: hypomux</code> and its old <code>interface-name: 以太网</code>
+override is gone (<code>hypomux-distribution.ps1</code> ensures both), so the paid dials are
+NIC-dispatched by HypoMux. The measurement that proves it, and the reason it was worth doing: all
+49 nodes enter at <code>ctat01.node01234.us</code> = <code>112.91.92.129</code>, and <b>before</b> the
+switch mihomo held <b>96</b> sockets to that host — pinned to one adapter by
+<code>interface-name</code> — while <b>after</b> it <code>hypomux-engine</code> holds <b>95</b>
+(77 via <code>10.90.126.33</code>, 18 via <code>192.168.1.100</code>) and mihomo holds <b>0</b>. An
+earlier revision had set <code>override.dialer-proxy: hypomux</code> and it was removed on 2026-10-10
+with the previous design; the completed switch reinstated it, so this is a current property with a
+socket-level measurement behind it, not an open item. One caveat kept from the switch: <code>mihomo
+-t</code> does <b>not</b> validate a provider-level <code>dialer-proxy</code> (a deliberately bogus
+dialer there still exits 0), which is exactly why the switch runs the socket acceptance test.</p>
+
+<div class="card warn">
+  <h4>glibc gotcha</h4>
+  <p style="margin-bottom:0">The host has glibc 2.32, so shadowsocks-rust's
+     <code>x86_64-unknown-linux-gnu</code> build fails with <code>GLIBC_2.39 not found</code>.
+     Always take the <code>x86_64-unknown-linux-musl</code> (static) release.</p>
+</div>
+
+<!-- ================================================================= -->
+<h2 id="s7"><span class="n">7</span>Failover chains</h2>
+
+<p>The direct lane does not hard-fail at all; the proxied lane degrades in the order mihomo's groups
+define it. The one honest gap is HypoMux itself (level 2).</p>
+
+<table>
+  <tr><th style="width:70px">Level</th><th>Trigger</th><th>Proxied path (<code>AUTO</code> / the rule-named set)</th><th>Direct lane (<code>LOCAL</code>)</th><th>Cost</th></tr>
+  <tr><td><b>1</b></td><td>normal</td><td><code>AUTO</code> → the 4:1 mix (four 911 exits + <code>aliyun-native</code>), dialled through HypoMux — the adapter is chosen there, and 4 of 5 connections ride the paid exits</td><td><code>DISPATCH</code> → <code>hypomux</code> first, so the NIC is HypoMux's too (<code>LOCAL = select [DISPATCH, DIRECT]</code>; the <code>DIRECT-LB</code> ring it used to select was retired 2026-10-11). Unlisted traffic comes here as well, via <code>MATCH,DISPATCH</code>; only loopback and the private ranges take the plain OS route</td><td class="maybe">paid on 4 of 5, free on 1</td></tr>
+  <tr><td><b>2</b></td><td>HypoMux down (<code>10800</code> closed)</td><td><b>every proxied destination fails</b> — all five members of the <code>AUTO</code> mix carry <code>dialer-proxy: hypomux</code>, and so does the paid provider now; the 911 rule set goes to <code>AUTO</code>, i.e. through the same dead dialer. <code>aliyun-la</code>, which carries no <code>dialer-proxy</code>, is reachable by hand through <code>PROXY</code> (and used to lead <code>DATA</code>; since the fourth change <code>DATA</code> is 911-only, so that free exit is now manual)</td><td>survives, but degraded: <code>DISPATCH = fallback [hypomux, DIRECT]</code> falls back to its <code>DIRECT</code> member, so direct traffic keeps working on the plain OS route instead of being NIC-dispatched</td><td class="maybe">paid once <code>AUTO</code> reaches it</td></tr>
+  <tr><td><b>3</b></td><td>the 911 exits all unhealthy</td><td><code>AUTO</code>'s health checks skip the four dead exits and every connection lands on <code>aliyun-native</code> — the free path is the <i>fallback</i> now, not the default. <code>PAID</code> and <code>DATA</code> (both 911-only) have no free member to degrade to</td><td>unaffected</td><td class="yes">free</td></tr>
+  <tr><td><b>4</b></td><td>everything down</td><td>connection fails cleanly</td><td><code>DIRECT</code></td><td class="yes">free</td></tr>
+</table>
+
+<div class="card bad">
+  <h4>Trap: HypoMux is now a single point of failure for the whole machine</h4>
+  <p style="margin-bottom:0">Before the renewal the catch-all was <code>MATCH,LOCAL</code> — a direct
+     path that could not fail because a component was missing. It became
+     <code>MATCH,HYPOMUX-PATH</code> at 12:2x, and <b>every</b> member of that group is dialled through
+     HypoMux, so for a few hours a closed <code>10800</code> took the catch-all down. Later on
+     2026-10-11 the owner changed the catch-all to <code>MATCH,DIRECT</code>, which removed that
+     failure from the <i>default</i> path — but not from the proxied one: every destination a rule
+     names (our B-class rules, the 911 must-proxy list, the learner's escalations) still goes to
+     <code>AUTO</code> → <code>HYPOMUX-PATH</code> → the HypoMux dialer. The <b>third</b> revision then
+     put HypoMux back in the path of everything, deliberately and with a guard: the catch-all is
+     <code>MATCH,DISPATCH</code> and <code>DISPATCH</code> is a <code>fallback</code> whose second
+     member is <code>DIRECT</code>, so with the engine down the machine keeps the internet — on the OS
+     route, without NIC dispatch — while <b>proxied</b> traffic still fails. Two honest limits come
+     with it: mihomo does <b>not</b> retry a connection that failed on the dispatched path (the
+     fallback is group-level and health-check based, not per-connection), and the GUI has no autostart
+     (section 8), so the engine-down state is reachable in practice rather than theoretical.</p>
+</div>
+
+<div class="card ok">
+  <h4>Why a proxied dial can be distributed but a plain SSH tunnel cannot</h4>
+  <p style="margin-bottom:0">HypoMux distributes <i>independent</i> connections. An SSH
+     <code>-D</code> tunnel multiplexes N streams into <b>one</b> TCP connection — there is nothing to
+     distribute, and the socket belongs to <code>ssh.exe</code>, where neither mihomo nor HypoMux can
+     reach it. Native shadowsocks and anytls both open <b>one connection per stream</b>, and they are
+     dialled <b>by mihomo</b>, so <code>dialer-proxy</code> applies to them and only to them. That
+     distinction is the entire reason for the transport change.</p>
+</div>
+
+<!-- ================================================================= -->
+<h2 id="s8"><span class="n">8</span>Startup order &amp; persistence</h2>
+
+<table>
+  <tr><th style="width:40px">#</th><th>Component</th><th>Mechanism</th><th>Identity</th><th>Brings up</th></tr>
+  <tr><td>1</td><td><code>AliyunTunnel</code></td><td>Task, at boot +10 s</td><td><b>SYSTEM</b></td><td><code>:1080</code></td></tr>
+  <tr><td>2</td><td><code>MihomoSplitter</code></td><td>Task, at boot +30 s</td><td><b>SYSTEM</b></td><td><code>:7897</code>, <code>:9097</code>, <code>/ui/</code></td></tr>
+  <tr><td>3</td><td><code>NetDashCollector</code></td><td>Task, at boot +45 s</td><td><b>SYSTEM</b></td><td><code>state/status.json</code></td></tr>
+  <tr><td>4</td><td><code>NetDashServer</code></td><td>Task, at boot +50 s</td><td><b>SYSTEM</b></td><td>this page, <code>:8899</code></td></tr>
+  <tr><td>5</td><td><code>AdapterMonitor</code></td><td>Task, at logon +90 s — <b>Disabled</b></td><td>victo</td><td><b>Retired 2026-10-11</b>: it used to measure adapters and rewrite the per-NIC rings (<code>src\proxy\Watch-Adapters.ps1</code>). Task <code>Disabled</code>, zero <code>Watch-Adapters</code> processes; adapter measurement belongs to HypoMux, and no task in this repo drives HypoMux.</td></tr>
+  <tr><td>6</td><td><code>AutoLearnRules</code></td><td>Task, at logon +2 min, then every 5 min</td><td>victo</td><td>learned rule providers</td></tr>
+  <tr><td>7</td><td><code>MobileHotspot</code> · <code>MobileHotspotStatus</code></td><td>Tasks, at logon (+30 s · every 2 min)</td><td>victo</td><td>the Wi-Fi AP; <code>MobileHotspotStatus</code> is a hotspot watchdog: restarts the AP (and its ICS sharing) if it is off or not sharing, and refreshes the snapshot</td></tr>
+  <tr><td>—</td><td><code>smartdns-rs</code>, <code>HypoMuxCore</code></td><td>Windows services, <b>Disabled</b></td><td>LocalSystem</td><td><i>nothing</i> — SmartDNS-rs is retired; <code>HypoMuxCore</code> is the idle service engine, which never accelerates (2026-10-10)</td></tr>
+  <tr><td>—</td><td>HypoMux GUI</td><td>launched <b>by hand</b> — no autostart registered (no <code>Run</code> key, no startup shortcut, 2026-10-11)</td><td>—</td><td>the GUI's engine, and with it <code>:10800</code> + <code>:10801</code> — i.e. <b>every connection mihomo handles</b>: every proxied dial, and every dispatched direct one. The GUI is the operator of record for NIC selection.</td></tr>
+  <tr><td>—</td><td>system proxy</td><td>registry, <code>ProxyEnable=1</code></td><td>—</td><td>points at <b>mihomo</b> only (<code>127.0.0.1:7897</code>); HypoMux runs <code>system_proxy_takeover: false</code></td></tr>
+</table>
+
+<p><b>Every task action is <code>pwsh.exe</code> (PowerShell 7.6.6) since 2026-10-11</b>, except the
+two WinRT hotspot tasks, which stay on <code>powershell.exe</code>: <code>src\hotspot\Hotspot.ps1</code>
+drives <code>NetworkOperatorTetheringManager</code>, and PowerShell 7 cannot project WinRT types
+(measured: the assembly load succeeds, the type lookup throws <code>Operation is not supported on this
+platform. (0x80131539)</code>). Every caller that reaches that file — <code>start-network.bat</code>'s
+<code>%HOTSPOT% start</code> line, <code>stop-network.bat</code>'s stop line and
+<code>start-network.ps1</code>'s hotspot status line — stays on 5.1 with them. The other wrappers call
+<code>pwsh</code>, and their process-discovery filters match <code>Name='powershell.exe' or
+Name='pwsh.exe'</code> so a pwsh-hosted supervisor is still found. <b>The long-running
+<code>mihomo-supervisor.ps1</code> process (pid 21232) is still hosted by 5.1 right now</b>: its task
+action is pwsh, so it migrates on the next restart or reboot — it was deliberately not restarted,
+because it runs mihomo as a pipeline child and killing it takes the proxy down.</p>
+
+<p><b>Four</b> of the eight tasks are <b>enabled</b> — <code>AliyunTunnel</code>,
+<code>MihomoSplitter</code> and the two hotspot tasks; <code>NetDashCollector</code>,
+<code>NetDashServer</code>, <code>AutoLearnRules</code> and <code>AdapterMonitor</code> are
+<code>Disabled</code>, because autostart is off by policy (the dashboards and the learner are started on
+demand by <code>start-network.bat</code>). The list, their state and their engines were verified by
+scheduled-task action on 2026-10-11. Unlike
+the previous design, the renewal <b>does</b> have a phase where the proxied path degrades: until the
+HypoMux GUI is running, <code>10800</code> is closed and every member of the <code>AUTO</code> mix
+(the four 911 exits and <code>aliyun-native</code>) cannot be
+dialled (section 7, level 2). With no autostart registered for the GUI, that phase lasts until someone
+launches it. Direct traffic is degraded too, but survives: <code>DISPATCH</code> is a
+<code>fallback</code>, so with the engine down it uses its <code>DIRECT</code> member and the machine
+stays online on the OS route. That is the third revision's guard — HypoMux is a hop for everything, so
+the group that carries everything had to be able to lose it. The learner being <code>Disabled</code> is
+its own open item: under this design a destination the dispatched direct path cannot carry needs a
+rule, and the learner is what writes rules (<code>docs\TODO.md</code> P0d).</p>
+
+<div class="card warn">
+  <h4>Two SYSTEM-account gotchas already solved</h4>
+  <ol style="margin-bottom:0">
+    <li>For SYSTEM, <code>$env:USERPROFILE</code> is <code>C:\WINDOWS\system32\config\systemprofile</code> — scripts must use absolute key paths.</li>
+    <li>OpenSSH rejects a key with any third-party ACE as <code>bad permissions</code>. SYSTEM needs its own copy: <code>C:\ProgramData\smartdns\aliyun_la</code>, ACL = SYSTEM + Administrators.</li>
+  </ol>
+</div>
+
+<!-- ================================================================= -->
+<h2 id="s9"><span class="n">9</span>Measured evidence</h2>
+
+<table>
+  <tr><th>Path / metric</th><th>Measurement</th></tr>
+  <tr><td>HypoMux engine sockets to <code>192.0.2.10:443</code> — <b>2026-10-11 12:4x, post-switch</b></td><td><b>28-30</b> established across both NICs — 22 via <code>10.90.126.33</code>, 7 via <code>192.168.1.100</code>; <code>ssh</code> held <b>1</b> (the <code>aliyun-la</code> tunnel) and mihomo held <b>0</b> to that server. The dial is distributed, not mihomo.</td></tr>
+  <tr><td>HypoMux engine sockets to <b>non-proxy destinations</b> — <b>third revision, 2026-10-11</b></td><td><b>25</b> sockets — <b>19 via <code>10.90.126.33</code>, 6 via <code>192.168.1.100</code></b> — while the same process owned all the upstream sockets (Aliyun <b>5</b>, paid <code>112.91.92.129</code> = <b>50</b>) and mihomo held <b>0</b> on those hosts. Ordinary direct traffic is NIC-dispatched by HypoMux, by both adapters.</td></tr>
+  <tr><td>HypoMux as a plain dialer — tested through its SOCKS5 on 10800, bypassing mihomo</td><td>gstatic <b>204</b>, example.com <b>200</b> (6/6 retries clean), microsoft.com <b>200</b>, proof.ovh.net <b>200</b>, baidu <b>200</b>, cloudflare.com <b>200</b>, github.com <b>200</b>; <code>wikipedia.org</code> <b>403</b> through the hop while the plain OS route <b>timed out</b> — the hop reaches at least one destination the OS route cannot. No measurable latency cost: baidu <b>0.204 s</b> through the hop vs <b>0.221 s</b> without. <i>Transient, recorded as such:</i> one <code>example.com</code> timeout that did not reproduce.</td></tr>
+  <tr><td>Superseded, kept: "in proxy mode HypoMux aggregates, it does not proxy"</td><td>An older measurement in this repo said foreign destinations fail through the hop (gstatic refused over its SOCKS port, api.deepseek.com answered in 0.57 s) and that it was an aggregator, not a proxy. <b>No longer true</b> — the socket split and the dial list above are the current readings. The note survives in <code>hypomux-serve.ps1</code>'s help text as the state before this revision.</td></tr>
+  <tr><td>The paid path — <code>ctat01.node01234.us</code> (<code>112.91.92.129</code>), the 911 entry host</td><td><b>Before the switch: 96 sockets in mihomo</b> (the provider was NIC-pinned by <code>interface-name: 以太网</code>). <b>After: 95 in <code>hypomux-engine</code></b> — 77 via <code>10.90.126.33</code>, 18 via <code>192.168.1.100</code> — and <b>mihomo 0</b>. The paid dials are NIC-dispatched too.</td></tr>
+  <tr><td>Supporting checks at the same switch — 2026-10-11 12:2x–12:4x</td><td><code>curl -x http://127.0.0.1:7897 https://www.gstatic.com/generate_204</code> → <b>204</b>; <code>mihomo -t</code> → <b>successful</b>; structural self-check → <b>0</b> active legacy references, <b>0</b> stray column-0 lines, <b>6/6</b> GENERATED markers (byte-identical).</td></tr>
+  <tr><td>Pre-reload connections, draining — seen right after the switch</td><td>29× <code>direct-nic50 &lt;- DIRECT-LB &lt;- LOCAL</code>, 11× <code>direct-nic5 &lt;- DIRECT-LB &lt;- LOCAL</code>, 2× <code>hy2-nic9 &lt;- HY2LB &lt;- MIX &lt;- AUTO</code> — connections established before the reload keep their old chains until they drain. <b>Expected and temporary, not the design.</b></td></tr>
+  <tr><td>HypoMux engine sockets to <code>192.0.2.10:443</code> — <b>2026-10-11 11:30, pre-switch</b></td><td><b>21</b> — 17 via <code>192.168.1.100</code> (以太网), 4 via <code>10.90.126.33</code> (以太网 2). mihomo held <b>0</b> sockets to that server. The same attribution, one sample earlier.</td></tr>
+  <tr><td>mihomo sockets to <code>192.0.2.10</code> — 2026-10-10</td><td>0 direct; <b>85</b> to <code>127.0.0.1:10800</code>, the dialer</td></tr>
+  <tr><td>Adapter reachability to the server — 2026-10-11 11:30</td><td>以太网 238 ms · 以太网 2 222 ms — both usable, and HypoMux used both</td></tr>
+  <tr><td><code>HYPOMUX-PATH</code> resolves to</td><td><code>aliyun-native</code> — <code>hy2-upstream</code> cannot cross the TCP SOCKS hop (QUIC)</td></tr>
+  <tr><td>DNS (live) — 2026-10-11</td><td>mihomo's API reports <code>dns: null</code>; UDP <code>:53</code> is ICS (<code>svchost -k netsvcs -s SharedAccess</code>, pid 3864); resolution is per adapter (section 3)</td></tr>
+  <tr><td>SmartDNS lookup, cached <span class="tag">historical 2026-10-10</span></td><td><b>0.022–0.043 ms</b></td></tr>
+  <tr><td>SmartDNS lookup, miss <span class="tag">historical</span></td><td>182–248 ms</td></tr>
+  <tr><td>30 domains, resolved concurrently <span class="tag">historical</span></td><td>SmartDNS 45.6 ms vs AliDNS 58.2 ms → <b>12.6 ms saved (1.3×)</b></td></tr>
+  <tr><td>Failure rate (latest instance)</td><td><b>~1 %</b></td></tr>
+  <tr><td>Google through the full stack</td><td>204 in <b>0.78 s</b></td></tr>
+  <tr><td>YouTube through the full stack</td><td>200 in 2.27 s</td></tr>
+  <tr><td>baidu via mihomo</td><td>200 in 0.33 s</td></tr>
+  <tr><td>HypoMux vs DIRECT (interleaved A/B)</td><td><b>1.0–1.1×</b> — parity</td></tr>
+  <tr><td>Port 443 handshake from Windows</td><td>546 ms (cellular)</td></tr>
+</table>
+
+<div class="card bad">
+  <h4>Honest reading of the numbers</h4>
+  <ul style="margin-bottom:0">
+    <li><b>The headline number is 12.6 ms, and it is history.</b> DNS was 89× faster <i>per query</i> under SmartDNS-rs, but browsers resolve in parallel, so page-load savings are small — and the resolver is not even live now (section 3). Real latency lives in TCP + TLS handshakes.</li>
+    <li><b>HypoMux gives no raw speedup today</b> — both adapters share one MiFi uplink (identical public IP), so there is nothing to aggregate. Under the renewal its value is not speed: it is one owner for NIC choice, per-dial adapter selection and failover, and being the only layer able to aggregate <i>once a second independent uplink exists</i>. The third revision measured the same parity through the hop itself — baidu <b>0.204 s</b> through HypoMux vs <b>0.221 s</b> without it — so making it a hop for everything did not cost latency.</li>
+    <li><b>Two earlier conclusions of mine were wrong</b> and are retracted: "HypoMux is 9× worse" (measured on a degraded link) and "HypoMux is 2.4× better" (the link recovered mid-test). Only interleaved sampling gave a trustworthy answer.</li>
+    <li><b>The GUI's stored adapter selection is not what governs.</b> Its settings reported <code>selected_adapter_ids: ["以太网 2"]</code> with <code>adapter_weights: {"以太网 2": 1}</code>, yet the engine used both NICs (21 sockets, 17 + 4). Read the GUI's live numbers as the record; treat the file as stored intent.</li>
+  </ul>
+</div>
+
+<!-- ================================================================= -->
+<h2 id="s10"><span class="n">10</span>Known limits &amp; open decisions</h2>
+
+<h3>Limits</h3>
+<table>
+  <tr><th>Limit</th><th>Detail</th></tr>
+  <tr><td>HypoMux is a single point of failure for <b>all</b> traffic</td><td>Every member of the <code>AUTO</code> mix (and of <code>DATA</code>) is dialled through <code>127.0.0.1:10800</code> via <code>dialer-proxy</code>, and since the third revision every dispatched direct connection goes through the same listener via <code>DISPATCH = fallback [hypomux, DIRECT]</code>. With the GUI's engine down: proxied destinations fail (section 7, level 2) and direct traffic survives only through that group's <code>DIRECT</code> member — on the OS route, without NIC dispatch</td></tr>
+  <tr><td>Per-connection failures are not retried</td><td>The fallback is group-level and health-check based, so a connection that fails on the dispatched path is not retried by the group — the third revision's cost, stated plainly</td></tr>
+  <tr><td>HypoMux cannot be driven from this repo</td><td>The GUI owns the engine over stdio, there is no control API, and <code>hypomux-serve.ps1</code>'s separate engine cannot bind <code>10800</code> — so NIC selection is by hand, and no task can restore it unattended</td></tr>
+  <tr><td>The GUI's stored settings do not govern</td><td>Measured 2026-10-11: <code>selected_adapter_ids: ["以太网 2"]</code> while the engine carried 17 + 4 sockets on both NICs</td></tr>
+  <tr><td>Non-proxied traffic is out of reach by design</td><td>No TUN anywhere, so Windows Update/Delivery Optimization and anything ignoring the system proxy follow the OS interface metric — HypoMux never sees them. "Everything is dispatched" therefore means everything <i>mihomo handles</i>, and nothing that bypasses the Windows system proxy</td></tr>
+  <tr><td>The learner is <code>Disabled</code> under a design that leans on it harder</td><td>With <code>MATCH,DISPATCH</code> almost everything is carried by the dispatched direct path, and a destination that path cannot carry needs a rule — <code>autolearn-direct</code> is what writes it. The <code>AutoLearnRules</code> task is currently <code>Disabled</code> (autostart off by policy), so nothing learns while the machine runs unattended. Open item, <code>docs\TODO.md</code> P0d</td></tr>
+  <tr><td>DNS policy is designed but not in force</td><td><code>dns.enable: false</code> in the live config, <code>:53</code> held by ICS, resolution per adapter (section 3)</td></tr>
+  <tr><td><b>The paid-spend guard is gone with the watcher</b></td><td>The byte-counting guard (40 of 50 GB → drop <code>MIX</code>) lived in <code>src\proxy\Watch-Adapters.ps1</code>, retired 2026-10-11. Paid spend was then bounded by <b>ordering</b> (<code>AUTO = fallback [HYPOMUX-PATH]</code> + <code>use: [clashmi]</code>, free first) — and the fourth change <b>removed that bound as well</b> by making the mix paid-first at 4:1, with no counter at all. Decide whether a byte-counting guard is wanted again (<code>docs\TODO.md</code> P0, P0e)</td></tr>
+  <tr><td>Cellular uplink</td><td>When the MiFi degrades (measured 1.4 s RTT on a TCP handshake), <b>nothing</b> in this stack can compensate</td></tr>
+  <tr><td>Single uplink</td><td>Both adapters currently share one public IP — aggregation cannot add bandwidth</td></tr>
+  <tr><td>HypoMux needs a GUI process</td><td><code>hypomux-engine service</code> alone stays idle (10 MB, binds nothing); the GUI must be running, and no autostart is registered for it</td></tr>
+  <tr><td><b>Paid spend is now the default, not the exception</b> <span class="tag warn">fourth change, 2026-10-11</span></td><td><code>AUTO</code> is a 911-first 4:1 mix: four of its five members are 911 exits, so <b>4 of every 5 proxied connections spend the metered plan</b> by design. Nothing counts bytes — the 40 GB guard died with the watcher (below) — so the only bound is the owner's ratio choice. A subscription node <b>rename</b> silently shrinks the ratio too, because the four are matched by regex over node names rather than listed: no error, no warning from <code>mihomo -t</code>. Both are open items, <code>docs\TODO.md</code> P0e</td></tr>
+  <tr><td>SQX via proxy</td><td><code>strategyquant.com</code> triggers a Cloudflare challenge on proxy IPs — deliberately routed <code>LOCAL</code> (plain DIRECT). Its <i>data</i> source is the opposite case: since the fourth change the whole of <code>dukascopy.com</code> is proxied through <code>DATA</code>, because direct is blocked outright and a few stable exits are what survives Dukascopy's TLS termination of bursty sources</td></tr>
+  <tr><td>Proxied-path distribution</td><td>Possible only because the transport is native (ss/anytls open one TCP connection per stream); the SSH <code>-D</code> path can never be distributed</td></tr>
+</table>
+
+<h3>Security items for you</h3>
+<div class="card bad">
+  <ol style="margin-bottom:0">
+    <li><b>Rotate the Aliyun root password</b> — it appeared in plaintext during this session. <code>passwd</code> on the server.</li>
+    <li>Consider <code>PasswordAuthentication no</code> — key auth is verified working.</li>
+    <li>Restrict the security group's port 22 to your own IP.</li>
+    <li><code>ssserver</code> on port 443 is exposed to the internet with a 2022 AEAD cipher — strong, but worth knowing.</li>
+  </ol>
+</div>
+
+<h3>Open decisions</h3>
+
+<div class="q">
+  <h4>Q1 — Retire the SSH tunnel?</h4>
+  <p>Redundant as a transport (no dialer can take over a socket owned by <code>ssh.exe</code>), but
+     under the renewal it is the <b>only</b> proxy path that survives a HypoMux outage — and since the
+     third revision HypoMux carries <i>everything</i> mihomo handles: unlisted traffic included, via
+     <code>DISPATCH</code>, and the group's <code>DIRECT</code> member is what keeps direct traffic
+     online when the engine is down. Every proxied destination — the 911 rule set included — depends on
+     the dialer. That is what
+     makes this dialer-free exit worth keeping. Level 2 of section 7 is the argument.</p>
+  <div class="opts">
+    <div class="opt"><b>Keep it</b> <span>— extra resilience, ~2 MB RAM, no cost. Two independent free paths (one of them dialer-free).</span></div>
+    <div class="opt"><b>Retire it</b> <span>— simpler; removes the <code>AliyunTunnel</code> task and the ssh key plumbing, and accepts that a HypoMux outage leaves only the paid provider.</span></div>
+  </div>
+</div>
+
+<div class="q rec">
+  <h4>Q2 — Dashboard: which panels lead? <span class="tag ok">recommended</span></h4>
+  <p>A live status dashboard exists and is <b>working</b> (<code>index.html</code>; the earlier note —
+  kept as the record — is that <code>/api/status</code> once returned a 141 MB payload, which is what
+  made the panels look broken: <code>state\status.json</code> reached <b>141 MB</b> and now measures
+  <b>4.7 KB</b>, with <code>mihomo.connections_active</code>, <code>mihomo.routes[]</code>,
+  <code>hypomux.carrying</code> and <code>hypomux.carried_conns</code> live, and all three pages
+  (<code>/</code>, <code>/design</code>, <code>/balance</code>) returning 200 as of 2026-10-11). It shows:
+  component state, group membership, which path each connection took, per-adapter latency and public
+  IP, audit-log hit/miss and failure rate.</p>
+  <div class="opts">
+    <div class="opt"><b>Lead with quota + the dialer</b> <span>— "is the paid tier being touched" and "is the dial actually going through HypoMux" are the two questions that would have caught the earlier bugs. The page now answers the second with <code>hypomux.carrying</code> / <code>carried_conns</code> (<code>carrying = true</code> measured 2026-10-11) and with the socket test it points at; it still reads mihomo's API, not HypoMux's engine (section 5), so it can show <code>HYPOMUX-PATH</code>'s pick and the carried total, never HypoMux's own per-NIC split.</span></div>
+    <div class="opt"><b>Lead with component health</b> <span>— mihomo (policy) and HypoMux (dialer) with colour-coded state, plus hotspot, tunnel and learner.</span></div>
+  </div>
+</div>
+
+<div class="q">
+  <h4>Q3 — Should the dashboard be able to <i>act</i>?</h4>
+  <p>Currently specified as strictly read-only. Buttons could force the free tier, restart the tunnel,
+  or freeze the groups' picks. Anything touching NIC selection or HypoMux's settings is
+  <b>out of bounds for automation</b> (section 5), so an "act" answer has to stop at mihomo's own
+  surface. (The previous design's "apply/freeze the rings" is no longer available to offer — those
+  rings were retired on 2026-10-11.)</p>
+  <div class="opts">
+    <div class="opt"><b>Read-only</b> <span>— safe; no way to break the network from a browser tab, and it keeps the "GUI is the operator of record" rule intact.</span></div>
+    <div class="opt"><b>Add controls</b> <span>— convenient for mihomo's own groups, but a stray click could spend quota or drop the proxy.</span></div>
+  </div>
+</div>
+
+<div class="q">
+  <h4>Q4 — Second independent uplink?</h4>
+  <p>The only thing that would make aggregation real — and the only thing that would make HypoMux's
+  adaptive-throughput strategy worth more than failover. Earlier the two adapters exited via
+  different cities (<code>223.160.165.198</code> Jinan vs <code>111.55.120.64</code> Shanghai),
+  so the MiFi hardware can expose two paths — it just is not doing so now.</p>
+</div>
+
+<!-- ================================================================= -->
+<h2 id="s11"><span class="n">11</span>2026-10-11 — what changed</h2>
+
+<table>
+  <tr><th style="width:210px">Change</th><th>Why, and what it replaced</th></tr>
+  <tr><td><b>Architecture renewed — <code>mihomo → hypomux → upstream</code></b></td>
+      <td>The design of record (renewed 2026-10-11 by the owner): mihomo owns the rules, which upstream proxy is chosen, and DNS policy; HypoMux owns which adapter each <b>proxied dial</b> leaves by, its measurement, weights and strategy. Canonical statement: <code>docs\HYPOMUX-DISTRIBUTION.md</code>. It replaced the 2026-10-10 design in which mihomo decided policy <i>and</i> distributed per NIC through generated outbounds and rings — <b>that material was removed from the live config on 2026-10-11 12:2x</b> by the completed <code>hypomux-distribution.ps1</code> (no arguments; <code>-Check</code> / <code>-Restore</code> / <code>-DryRun</code> / <code>-NoReload</code> / <code>-ConfigPath</code> / <code>-Summary</code>), which now retires all of it — per-NIC outbounds, <code>DIRECT-LB</code>, the <code>LOCAL</code> wiring, the <code>GENERATED</code> bodies — and stops the watcher — nothing is left to manual editing.</td></tr>
+  <tr><td><b>System proxy on both halves, no TUN anywhere</b></td>
+      <td>mihomo is the Windows system proxy on <code>127.0.0.1:7897</code> with <code>tun.enable: false</code>; HypoMux runs <code>mode: proxy</code> with <code>system_proxy_takeover: false</code> and serves SOCKS5 <code>127.0.0.1:10800</code> + HTTP <code>127.0.0.1:10801</code>. The TUN material stays written in the config but disabled (<code>stack</code>, <code>auto-route</code>, <code>auto-redirect</code>, <code>dns-hijack</code>, <code>route-exclude-address</code>, <code>sniffer</code>).</td></tr>
+  <tr><td><b>The dialer carries the Aliyun outbounds — and, since the third revision, everything else</b></td>
+      <td><code>aliyun-native</code> (ss) and <code>hy2-upstream</code> (hysteria2) both carry <code>dialer-proxy: hypomux</code>; <code>HYPOMUX-PATH = fallback [hy2-upstream, aliyun-native]</code>, <code>now = aliyun-native</code>. Non-proxied traffic is dispatched, not left on the OS route: <code>DISPATCH = fallback [hypomux, DIRECT]</code> (health-check <code>https://www.baidu.com</code>, expected 200, <code>interval: 60</code>, <code>timeout: 5000</code>, <code>lazy: true</code>) uses the same listener as a plain dialer, and its <code>DIRECT</code> member is the deliberate engine-down guard. Only loopback and the private ranges stay raw <code>DIRECT</code>. hysteria2 is QUIC and cannot traverse the TCP SOCKS hop, so it never wins — measured in the live config as <code>aliyun-native 522 ms, hy2-upstream FAILED</code>.</td></tr>
+  <tr><td><b>The catch-all is now <code>MATCH,DISPATCH</code> — HypoMux dispatches the direct traffic too</b> <span class="tag">owner, third revision of 2026-10-11</span></td>
+      <td>Owner's words: <i>"hypomux not only dispatch proxy but also dispatch the direct, the hypomux dispatch all the traffics to the NICs, all the traffic should using hypomux to do NIC dispatch after the mihomo"</i>. It replaced <code>MATCH,DIRECT</code> (which was itself the second revision, earlier the same day, owner: "don't proxy everything, just ref 911 connect rules, that leave the most traffic direct visit"), and before that <code>MATCH,HYPOMUX-PATH</code> — the day's order is <code>MATCH,LOCAL</code> → <code>MATCH,HYPOMUX-PATH</code> → <code>MATCH,DIRECT</code> → <code>MATCH,DISPATCH</code>. The proxy set is unchanged: our own rules, the learner's escalations, and the 911 subscription's own must-proxy list — lifted out of that subscription's <code>rules:</code> block by the new <code>tools\Update-Clashmi911Rules.ps1</code> into rule-provider <code>clashmi-911</code> (<b>354</b> entries on 2026-10-11: 329 <code>DOMAIN-SUFFIX</code>, 13 <code>DOMAIN-KEYWORD</code>, 12 <code>DOMAIN</code>; generated file <code>runtime\rules\clashmi-911.yaml</code>, gitignored, <code>type: file</code> with <code>interval: 0</code>) and referenced as <code>RULE-SET,clashmi-911,AUTO</code>. Its 197 <code>DIRECT</code> entries, its CN/private entries and its <code>MATCH,OpenConnectUs911</code> tail are dropped on purpose — that tail is what proxied everything. What changed instead: the previously-<code>DIRECT</code> rules now point at <code>DISPATCH</code>, <code>LOCAL</code> is <code>select [DISPATCH, DIRECT]</code>, and <code>PROXY</code> leads with <code>DISPATCH</code> (<code>select [AUTO, aliyun-la, DISPATCH, DIRECT]</code>, the raw <code>DIRECT</code> kept last as a diagnosis-only bypass). Verified live in mihomo's log: <code>www.163.com</code> → <code>match Match using DISPATCH[hypomux]</code>, <code>displaycatalog.mp.microsoft.com</code> → <code>DomainSuffix(microsoft.com) using DISPATCH[hypomux]</code>, <code>download.windowsupdate.com</code> → <code>DomainSuffix(windowsupdate.com) using DISPATCH[hypomux]</code>, <code>api.deepseek.com</code> → <code>DomainSuffix(deepseek.com) using DISPATCH[hypomux]</code>, while <code>copilot.microsoft.com</code>, <code>www.youtube.com</code> and <code>futuhk.com</code> still ride <code>AUTO[aliyun-native]</code>. The dispatch itself is measured at the socket level: <b>25 sockets to non-proxy destinations, 19 via <code>10.90.126.33</code> / 6 via <code>192.168.1.100</code></b>, all upstream sockets in the same process, mihomo 0. <i>Kept as the second revision's record:</i> <code>www.speedtest.net</code> → <code>match Match using DIRECT</code>, <code>futuhk.com</code> / <code>futu.link</code> / <code>partneradvantage.goog</code> → <code>match RuleSet(clashmi-911) using AUTO</code>.</td></tr>
+  <tr><td><b>Fourth change: the proxied path is a 911-first 4:1 mix — and the SQX data source is fully proxied</b> <span class="tag">owner, last change of 2026-10-11</span></td>
+      <td>Two decisions, both later the same day. <b>(a)</b> Owner's words: <i>"for proxy, we can use our 911 connect first and then use the aliyun server proxy (4:1), all through hypomux dispatch"</i>, and on which nodes: <i>"the hk in 911 connect nodes is our main nodes for 911 connect"</i>. <code>AUTO</code> — the group every proxy rule resolves through, <code>RULE-SET,clashmi-911</code> included — stopped being a free-first <code>fallback</code> and became a <b><code>load-balance</code> on <code>strategy: round-robin</code> with five members</b>: <code>香港|HK2022|AT</code> (the owner's main 911 node, and the fastest of all 49 measured, <b>80 ms</b>), <code>台湾|TW2035|AT</code> (112 ms), <code>新加坡|SG2034|AT</code> (115 ms), <code>马来西亚|MY2032|AT</code> (118 ms), and <code>aliyun-native</code> as the "1" share. The four are selected with <code>filter:</code> — a regex alternation over node names — <b>not</b> by listing names under <code>proxies:</code>, because a name that disappears from the subscription would make the whole config invalid, the trap that retired the per-NIC rings; <code>lazy: false</code> (was <code>lazy: true</code>), <code>interval: 60</code>, health check on <code>google/generate_204</code>. Round-robin rather than consistent-hashing: hashing pins a destination to ONE member, so a flaky node becomes repeated failures for that destination — a lesson this project already paid for in <code>DATA</code>. The ratio is by member count (4 of 5) because <b>mihomo groups have no weights</b>, so one node cannot be given four shares. Measured over 20 connections through the mix: HK 5 · TW 4 · SG 4 · <b>aliyun-native 4</b> · MY 3 — exactly <b>4 paid : 1 Aliyun</b>, so 4 of every 5 proxied connections now spend the metered plan. The finding that came out of measuring it: the first version used <code>HYPOMUX-PATH</code> as the Aliyun member and sent <b>10 of 10</b> connections to paid nodes — a silent 0-in-5 Aliyun share — because <code>HYPOMUX-PATH</code> reads <b>unhealthy</b> through the hop (hysteria2 is QUIC, the hop is TCP SOCKS) and a load-balance skips unhealthy members; measured then <code>aliyun-native 366 ms alive</code>, <code>hy2-upstream failed</code>, <code>HYPOMUX-PATH alive=false</code>. It names <code>aliyun-native</code> directly now. <b>(b)</b> Owner: <i>"give sqx datadownload all from proxy (dispatch NIC by hypomux as always)"</i> — <code>DOMAIN-SUFFIX,dukascopy.com</code> moved from <code>LOCAL</code> to <b><code>DATA</code></b>, so the whole data source is proxied, the Dukascopy website included; the two explicit hosts SQX pulls stay listed. They target <code>DATA</code> and not the mix on purpose: bulk downloads want a few stable exits (Dukascopy terminates TLS from bursty/multi-IP sources — SQX logged 1,138 of those), and <code>DATA</code> is health-checked on a real Dukascopy tick URL every 600 s. <code>strategyquant.com</code> stays <code>LOCAL</code> (proxying it trips Cloudflare's 403, and that is the SQX <i>site</i>, not its feed). Verified live: <code>datafeed</code> → <code>DATA[香港|HK2022|AT]</code>, <code>freeserv</code> → <code>DATA[日本|JP2021|AT]</code> and answers <b>429</b> (the documented per-IP limit — a working connection, not bulk speed), <code>www</code> → <code>DATA[新加坡|SG2034|AT]</code> (302). <code>hypomux-distribution.ps1</code> was updated to emit the new mix, so a re-run cannot revert it, and a <code>-DryRun</code> reproduces the live config byte-for-byte again.</td></tr>
+  <tr><td><b>Unchanged by the fourth change — do not read it as new</b></td>
+      <td><b>DISPATCH is still the design</b>: every connection, proxied or not, is NIC-chosen by HypoMux. Re-verified after these changes: <code>hypomux-engine</code> owns every upstream socket (<b>30</b> non-loopback sockets at the check) and <b>mihomo holds zero</b> on the Aliyun and 911 hosts. Also unchanged: the Microsoft Store/Windows Update pins, the 911 must-proxy rule set (<code>tools\Update-Clashmi911Rules.ps1</code>, 354 rules), the US visa portal pin plus its poisoned-DNS hosts entry, and PowerShell 7 as the default shell with the WinRT hotspot exception.</td></tr>
+  <tr><td><b>Microsoft Store + Windows Update pinned (now <code>DISPATCH</code>), Copilot excepted</b> <span class="tag">owner, later on 2026-10-11</span></td>
+      <td>Seven hand-written rules, above the auto-learner and above the 911 rule set because first match wins: <code>DOMAIN,copilot.microsoft.com,AUTO</code> first, then <code>DOMAIN-SUFFIX,microsoft.com,DISPATCH</code>, <code>windowsupdate.com</code>, <code>windows.com</code>, <code>msftconnecttest.com</code>, <code>msftncsi.com</code>, <code>microsoftstore.com</code> — the six pins targeted <code>DIRECT</code> until the third revision moved them to <code>DISPATCH</code> (still not proxied; the NIC is now HypoMux's). Why it was needed: the learner had previously learned <code>windows.com</code> and <code>msftncsi.com</code> as "direct failed → proxy", and the 911 list itself carries <code>windows.com</code>, so anything lower would have dragged Store/Update back onto the proxy; the learner's explicit-rule guard now reports hand-written rules for review instead of overriding them. Why off the proxy: the Store downloads from a domestic CDN at <b>~17.8 MB/s</b>. Verified: <code>displaycatalog.mp.microsoft.com</code> → <code>DomainSuffix(microsoft.com) using DISPATCH[hypomux]</code>, <code>download.windowsupdate.com</code> → <code>DomainSuffix(windowsupdate.com) using DISPATCH[hypomux]</code>, <code>copilot.microsoft.com</code> → <code>Domain(copilot.microsoft.com) using AUTO[aliyun-native]</code>.</td></tr>
+  <tr><td><b><code>AUTO</code>'s health-check interval 120 s → 60 s</b> <span class="tag">measured</span></td>
+      <td>After a config reload the free group reads unhealthy for a moment, so traffic parked on a paid node until its next scheduled check — 60 s halves that quota window. The interval survives the fourth change; <code>lazy: true</code> does not: the 4:1 mix runs <code>lazy: false</code>, because a load-balance needs live health data to skip a dead exit instead of giving it every fifth connection.</td></tr>
+  <tr><td><b>NIC dispatch is human-controlled, by measurement</b></td>
+      <td><code>hypomux-engine.exe</code> (pid 23188) is a <b>child of</b> <code>hypomux.exe</code> (pid 16456) and is driven over the GUI's stdio channel. No control API: 10801 is the HTTP <i>proxy</i> port and answers <code>502</code> to proxy-style requests, the GUI opens no listener, and the only pipe (<code>\\.\pipe\HypoMux-Core-Service</code>) belongs to the idle service engine. <code>hypomux-serve.ps1</code> spawns a separate engine that cannot bind <code>10800</code> while the GUI holds it. So no script in this repo drives HypoMux, and no task can restore NIC selection unattended (section 5).</td></tr>
+  <tr><td><b>Retired 2026-10-11: the previous design is out of the live config</b></td>
+      <td>Generated per-NIC outbounds (<code>aliyun-nic9</code>/<code>aliyun-nic26</code>, <code>hy2-nic9</code>/<code>hy2-nic26</code>, each with <code>interface-name: 以太网</code> / <code>以太网 2</code>), the <code>HY2LB</code>/<code>DIRECT-LB</code>/<code>MIX</code> rings, and the <code>AdapterMonitor</code> watcher (<code>src\proxy\Watch-Adapters.ps1</code>) that rewrote them were <b>present until 12:2x and are gone now</b>. The completed <code>hypomux-distribution.ps1</code> (no arguments) did it in one run: exit 0 (<code>Design is live: mihomo decides rules and upstream, HypoMux decides the NIC.</code>), a second run byte-identical. It emptied <code>GENERATED:PROXIES</code>, rewrote <code>GENERATED:AUTO</code> to <code>HYPOMUX-PATH</code> + <code>AUTO</code>, moved <code>LOCAL</code> outside its region as <code>select [DIRECT]</code> (the third revision later widened it to <code>select [DISPATCH, DIRECT]</code>, and the script now writes that shape so a re-run cannot revert it — it also warns if the config references <code>DISPATCH</code> with no such group), deleted <code>DIRECT-LB</code> and <code>direct-nic5/50</code>, fixed <code>BENCH</code>, validated (structural + <code>mihomo -t</code> + no-legacy-names) <b>before</b> stopping the watcher, reloaded via the API, verified the proxy 204 <b>and</b> the socket acceptance test, and would have rolled config + mihomo + watcher back on any failure. Its dry run reproduces the live config byte-for-byte (SHA256 <code>CB3A6BE55421B9478CE810BC785AFF4A86DFE0425EC139C2CC99F6275ECA486D</code> on both sides, as that run recorded it — the live file was edited again at 13:44:33 to add the link-local rule, +210 bytes, so take a fresh <code>-DryRun</code> before quoting a hash). <i>History, kept:</i> the watcher had been restarted once after an earlier half-scoped run, which regenerated the retirable parts — that is why they were still there to remove.</td></tr>
+  <tr><td><b>Two switch traps, now guarded</b> <span class="tag warn">cost real time</span></td>
+      <td><b>1.</b> A catastrophic regex — <code>(?ms)^  - name: aliyun-native\r?\n(?:    .*\r?\n)*?    server:\s*([0-9.]+)</code> — burned <b>633 s of CPU</b> and hung the switch at its acceptance test (after the config had already been applied): with <code>(?s)</code> the <code>.</code> matches newlines inside a lazy <code>*?</code>, so the engine backtracks over the whole file for every start position. It is a line-by-line scan now. <b>2.</b> <code>@( 'a', 'b' + $x + 'c', 'd' )</code> flattens into separate elements — in a multi-line array literal the comma binds first, so the <code>+</code> appends to the array being built: one comment line silently became three and emitted <code>), plus the</code> at column 0, making the document invalid YAML. Concatenate into a variable <i>before</i> the array literal. Measured in PS 5.1 <b>and</b> 7. Cosmetic quirk kept on the record: on a <b>re-run</b> the switch reports <code>WARNING: GENERATED:PROXIES markers not found</code> although the legacy note is in place, the markers are 6/6 and the run is byte-identical (tracked in <code>docs\TODO.md</code>).</td></tr>
+  <tr><td>Frontend is <b>metacubexd</b> at <code>:9097/ui/</code></td>
+      <td>mihomo serves the dashboard itself (<code>external-ui: ui</code> → <code>runtime\ui</code>), so there is no extra process. It must be <b>restarted</b> after the first install: a config reload accepts <code>external-ui</code> but does not mount the static route (<code>/ui/</code> kept 404ing). This page stays, because it shows what mihomo cannot — hotspot, tunnel, learner, per-NIC monitor.</td></tr>
+  <tr><td><b>Per-NIC load balancing</b> from measured status <span class="tag warn">previous design — retired 2026-10-11</span></td>
+      <td>Ported from HypoMux's own engine: throughput is an EWMA (α 0.2) of the bytes mihomo attributes to each outbound, latency scores <code>rtt + 2·jitter + 400·loss</code> (α 0.25), and the allocator targets <code>0.5/N + 0.5·rate/Σrate</code> with a hard <code>1/(2N)</code> floor. Weights reach mihomo by <b>repeating members</b> — it rejects per-proxy <code>weight:</code> objects outright. Under the renewal this logic belongs to HypoMux again; the rings and outbounds it drove went with the 2026-10-11 switch, so the algorithm survives here as the record (and in the unit tests), not as a live path.</td></tr>
+  <tr><td><b>911 plan in the mix at 1:1</b>, with a spend guard <span class="tag warn">retired 2026-10-11</span></td>
+      <td><code>MIX = [HY2LB, PAID]</code> used to send roughly half of all destinations through the metered plan. mihomo cannot cap a provider's bytes, so the monitor counted what each 911 node carried and, at 40 of the 50 GB, dropped <code>MIX</code> so <code>AUTO</code> led with the free tier again. The ring and the guard were retired together with the watcher on 2026-10-11; paid spend was then bounded by <b>free-first ordering</b> (<code>AUTO = fallback [HYPOMUX-PATH]</code> + <code>use: [clashmi]</code>) — <b>and the fourth change replaced that with a paid-first 4:1 mix and no counter at all</b>, so the guard question is open again and sharper (§ "Open decisions"). One trap is kept because it still applies to <i>any</i> mix, old or new: <code>PAID</code> needed <code>lazy: false</code>, because an untested lazy group reports itself dead and a dead member is simply skipped — which is exactly how the new mix's first version lost its Aliyun share (fourth change, above).</td></tr>
+  <tr><td><code>DATA</code> group for SQX / Dukascopy</td>
+      <td>The data hosts resolved to poisoned Facebook IPs and were dialled <code>LOCAL</code> (direct), where they are blocked. They now resolve overseas and route through <code>DATA</code>, <b>pinned to the 香港 node by filter</b>. The measurement that drove that: through the free Aliyun exit Dukascopy answers <code>HTTP 429</code>; spread across a 49-node rotating ring its edge terminates the TLS handshake (<code>SSLHandshakeException: Remote host terminated the handshake</code> — 1,138 of them in SQX's log); through a single stable Hong Kong exit, <b>4 of 4 files downloaded cleanly</b> (34 KB, 28 KB, 29 KB, 36 KB, warming from 10.4 s to 1.6 s as TLS sessions were reused). Caveat: the endpoint rate-limits <i>per IP</i>, so a long run throttles the HK exit too — for bulk history Dukascopy's own documented answer is a requester-pays S3 bucket, scripted in <code>tools\Fetch-DukascopyS3.ps1</code>.</td></tr>
+  <tr><td>Tooling: backup · UI install · S3 fetch</td>
+      <td><code>tools\Backup-Repo.ps1</code> (bundles, verified by restoring one), <code>tools\Install-Metacubexd.ps1</code>, <code>tools\Fetch-DukascopyS3.ps1</code> (refuses to sync without <code>-ConfirmCost</code>, because requester-pays bills this account). CI now syntax-checks <code>tools/</code> as well and fails if the committed config template regains a key or a subscription token.</td></tr>
+  <tr><td><b>PowerShell 7 is the default shell</b> <span class="tag">owner, later on 2026-10-11</span></td>
+      <td>Every scheduled task action is <code>pwsh.exe</code> (PowerShell 7.6.6; <code>$PsExe = 'pwsh.exe'</code> in <code>src\setup\Register-AllTasks.ps1</code>, which carries the exception list), and the six non-hotspot tasks — <code>AliyunTunnel</code>, <code>MihomoSplitter</code>, <code>NetDashCollector</code>, <code>NetDashServer</code>, <code>AutoLearnRules</code>, <code>AdapterMonitor</code> — were re-pointed with their state preserved (the disabled ones stayed disabled: autostart is off by policy). Live proof: <code>AliyunTunnel</code> (pid 25500 — <code>tunnel supervisor start (pid 25500)</code> in <code>state\aliyun-tunnel.log</code>), <code>NetDashCollector</code> (38824) and <code>NetDashServer</code> (34148) run under pwsh; this dashboard answers 200 on <code>/</code> and <code>/api/status</code>; the proxy returns 204; the hotspot is On; <code>:1080</code> is listening. The documented exception is <b>WinRT</b> — see section 8. An MSI rather than the Store package on purpose: MSIX apps cannot run as SYSTEM, which is what every boot task is. <b>Still on 5.1 right now:</b> the long-running <code>mihomo-supervisor.ps1</code> process (pid 21232) — its task action is pwsh, so it migrates on the next restart or reboot, and it was deliberately not restarted because it runs mihomo as a pipeline child and killing it takes the proxy down. Tests also stay on 5.1: Pester 5.5.0 is installed for 5.1 only, while pwsh 7 sees just the Pester 3.4 that ships with Windows (<code>Install-Module Pester -Scope CurrentUser -RequiredVersion 5.5.0</code> from pwsh is the way to change that).</td></tr>
+  <tr><td><b>A process filter that names a script kills its own shell</b> <span class="tag warn">trap, cost real time</span></td>
+      <td>Measured while re-pointing the tasks to pwsh: a kill/process filter that matches on a script <b>name</b> also matches the shell that is currently <i>running the command containing that name</i> — the command terminated itself. Build such patterns at run time (concatenate the pieces) or exclude <code>$PID</code>.</td></tr>
+  <tr><td>Microsoft Store / Update measured fast</td>
+      <td><code>tlu.dl.delivery.mp.microsoft.com</code> resolves to domestic CDN addresses (106.116.x, 150.138.x, 58.58.x) and downloads <b>DIRECT at ~17.8 MB/s (143 Mbps)</b> — the measurement behind the <code>DIRECT</code> pins above (and behind the older <code>DOMAIN-SUFFIX,microsoft.com,LOCAL</code> rule), and the domestic-DNS behaviour the old guide predicted holds.</td></tr>
+</table>
+
+<!-- ================================================================= -->
+<h2 id="s12"><span class="n">12</span>2026-10-12 — the startup control plane (recommended design, for review)</h2>
+
+<div class="card info">
+  <p><b>Owner, 2026-10-12:</b> <i>"can you automatically control mihomo and hypomux at windows start/login?"</i>
+  and then <i>"what's your recommendation design now?"</i> — this section is the answer, written as a
+  proposal. <b>Nothing of it is built yet</b>; the last block is the decision list, with recommended
+  values in bold.</p>
+</div>
+
+<p><b>Baseline, measured today:</b> the machine is <b>stock</b> — today's resets deleted every task
+(<code>MihomoSplitter</code>, <code>AliyunTunnel</code>, the hotspot pair, the status window), the logon
+<code>Run</code> entries are gone, HypoMux's <code>autostart</code> / <code>auto_start_engine</code> are
+<code>false</code>, and <code>HypoMuxCore</code> is <code>DISABLED</code> / <code>STOPPED</code>. So this
+design is about <b>re-enabling deliberately</b>, plus one new piece that coordinates the two lanes.</p>
+
+<h3>The two lanes — and their one honest asymmetry</h3>
+<table>
+  <tr><th style="width:170px">lane</th><th>starts</th><th>owner of record</th><th>if it fails</th></tr>
+  <tr><td><b>mihomo</b> — policy: rules, upstreams, the system proxy</td>
+      <td><b>at boot</b> — task <code>MihomoSplitter</code>, SYSTEM, +30 s; no logon needed</td>
+      <td>this repo, end to end — the supervisor restarts it, the coordinator verifies it</td>
+      <td>task restarts ×5; the coordinator restarts the task once; then repair / plan-B stand as today</td></tr>
+  <tr><td><b>HypoMux</b> — NIC dispatch, <code>:10800</code></td>
+      <td><b>at logon</b> — its engine is GUI-owned; no authenticated client exists before a desktop session</td>
+      <td><b>gui mode (recommended):</b> the app itself starts its engine. <b>agent mode:</b> this repo runs a headless engine in its place.</td>
+      <td>gui mode: the lane is absent and <i>reported</i>; <code>DISPATCH</code> falls back to <code>DIRECT</code>, so the machine stays online on the OS route</td></tr>
+</table>
+
+<div class="card warn">
+  <h4>Stated plainly, so nothing promises otherwise</h4>
+  <ul style="margin-bottom:0">
+    <li><b>No pre-logon HypoMux proxy.</b> The Core Service at boot would be an idle, fingerprint-guarded
+        engine <i>host</i> — the lane begins when the official GUI attaches at logon, and only the official
+        binary may attach. Enabling the service changes the engine's identity, not the timeline.</li>
+    <li><b>One owner at a time, enforced.</b> An engine's control channel is a private stdio session; two
+        controllers on one engine are impossible by design. The coordinator detects contention (two engines,
+        or <code>:10800</code>/<code>:10801</code> held twice) and <b>fails loudly, changing nothing.</b></li>
+    <li><b>The system proxy is per-user.</b> Even mihomo's <code>:7897</code> reaches apps only after logon
+        brings the HKCU pointer up — which is exactly the job the new coordinator takes over from muscle
+        memory, and only when mihomo actually answers.</li>
+    <li><b>One rule pair bypasses the dispatch hop by owner order:</b> the two DeepSeek rules
+        (<code>deepseek.com</code> suffix + <code>deepseek</code> keyword — the keyword is what catches
+        <code>deepseekapi</code>-style hosts) are raw <code>DIRECT</code>: through any proxy DeepSeek is
+        unreachable from here, and through the hop it is what logged the 241 deadline-exceeded dials.
+        <code>fix-deepseek.ps1</code> re-forces them, and a RepoHygiene test now pins them so a future
+        edit cannot flip them back silently.</li>
+  </ul>
+</div>
+
+<h3>What gets added</h3>
+<ul>
+  <li><b><code>src\startup\StartupCoordinator.ps1</code></b> + a logon task (+20 s, interactive user,
+      hidden and <code>conhost --headless</code> like every other interactive task): bounded waits for
+      <code>:7897</code>/<code>:9097</code> and (gui mode) <code>:10800</code>; sets the HKCU system proxy
+      to mihomo <b>only when mihomo answers</b>; single-owner checks; runs <code>start-network.ps1 --check</code>
+      as the single source of truth; writes <code>state\startup-&lt;stamp&gt;.log</code> and feeds the status
+      window. Scoped repairs only — it never resets network, never edits configs, never drives the GUI engine.</li>
+  <li><b><code>config\startup-policy.json</code></b> (tracked): <code>mihomo: task|off</code> ·
+      <code>hypomux: gui|agent|off</code> · <code>systemProxy: auto|off</code> · <code>aliyunTunnel: task|off</code> ·
+      <code>hotspot: logon|off</code> · <code>hypomuxService: auto|off</code>.
+      <b>Recommended defaults: task · gui · auto · task · logon · off.</b>
+      <code>autostart-on/off.bat</code>, <code>reset-network.ps1</code> and <code>fixall.ps1</code> keep
+      covering every registered name — the way-out guarantee stays whole.</li>
+  <li><b>agent mode only — <code>runtime\hypomux-agent-supervisor.ps1</code>:</b> a resident supervisor (the
+      <code>mihomo-supervisor.ps1</code> pattern) that starts and <i>holds</i> a headless engine over
+      protocol v1 — live <code>engine.scheduling</code>, telemetry snapshots into <code>state\</code> — for
+      unattended and benchmark runs. The GUI's own auto-start-engine must be off in this mode, and the
+      coordinator enforces that the two never overlap.</li>
+</ul>
+
+<h3>Why gui mode is the recommendation</h3>
+<p>The rule has been <i>no script drives HypoMux</i>, and it stays right: the engine's control plane is one
+private session, and the GUI's value is a human watching the numbers. gui mode keeps that — HypoMux starts
+itself at logon (its own <code>Run</code> entry and settings), the coordinator only <b>verifies and
+reports</b>, and the operator keeps the NIC dials. agent mode is the honest tool for the opposite case —
+runs where nobody is watching the GUI — and the protocol makes it real: <code>engine.start</code>,
+live <code>engine.scheduling</code> (adapters, weights, strategy mid-run), <code>engine.telemetry</code>,
+<code>engine.stop</code>. What it cannot offer is visibility: the GUI would show nothing about an agent
+engine, so that mode reports telemetry itself.</p>
+
+<div class="q rec">
+  <h4>Decisions requested <span class="tag ok">recommended values in bold</span></h4>
+  <ol style="margin-bottom:0">
+    <li>HypoMux lane at logon: <b>gui</b> · agent · off — and if gui, may the coordinator relaunch
+        <code>hypomux.exe --silent</code> when the process is missing (<b>yes</b> — starting the app, not
+        driving it), or strictly report?</li>
+    <li>Re-enable the mihomo boot task now? <b>yes</b> — the machine is stock since today's resets.</li>
+    <li>System proxy: set it automatically at logon, only when mihomo answers? <b>yes</b> — this retires
+        the most common "no internet" state the plan-B doc records.</li>
+    <li><code>AliyunTunnel</code> back at boot? <b>yes</b> — the dialer-free independence path (§7).
+        Hotspot tasks: <b>logon as before</b> (the phone flow uses them), or off / on demand?</li>
+    <li><code>HypoMuxCore</code> service: <b>off</b> — flip it later only for a TUN-ready posture; it never
+        yields a pre-logon proxy.</li>
+    <li>Keep the visible <code>NetworkStatus</code> window at logon as the human readout, with the
+        coordinator's summary appended to the same log? <b>yes</b>.</li>
+  </ol>
+</div>
+
+<p style="color:var(--dim);font-size:13px">The day this is approved and built, it supersedes §8's
+"launched by hand" row for the HypoMux lane and the "cannot be driven" limit in §10 — with the ownership
+rule intact, gui or agent, never both.</p>
+
+<!-- ================================================================= -->
+<h2 id="s13"><span class="n">13</span>2026-10-12 — what changed</h2>
+
+<table>
+  <tr><th style="width:230px">change</th><th>why, and what it replaced</th></tr>
+  <tr><td><b>DeepSeek: raw DIRECT, pinned by a test</b> <span class="tag">owner, 2026-10-12</span></td>
+      <td>Owner: <i>"the deepseek and the deepseekapi must use direct and not proxy, otherwise we cannot visit deepseek here"</i>.
+      <code>DOMAIN-SUFFIX,deepseek.com,DIRECT</code> + <code>DOMAIN-KEYWORD,deepseek,DIRECT</code> sit near the top of the rules;
+      with loop protection they are <b>the only rules that do not ride the DISPATCH hop</b> — through any proxy (and through the
+      hop, which logged 241 <code>context deadline exceeded</code> dials) DeepSeek is unreachable from here. They had ridden
+      DISPATCH since the third revision of 2026-10-11. <code>fix-deepseek.ps1</code> re-forces them, and a new RepoHygiene test
+      fails if any rule mentioning DeepSeek targets anything but DIRECT (the flip happened once; it must not happen silently again).</td></tr>
+  <tr><td><b>The Aliyun box gained protocols — and a "reality" bug was found and fixed</b> <span class="tag">measured</span></td>
+      <td>Installed: <b>sing-box 1.14.3</b> → <b>AnyTLS 8080/tcp</b> (the protocol the 911 nodes use) + <b>TUIC v5 18240/udp</b>;
+      <b>xray</b> → <b>Trojan-TLS 18240/tcp</b>, and VLESS-REALITY moved from <code>127.0.0.1:8443</code>-behind-<code>socat</code>
+      to <b><code>0.0.0.0:1080</code> direct</b> (the orphan relay retired — it was not even reboot-persistent) with its steal
+      target fixed from <code>www.microsoft.com</code> (which never completed the mirrored handshake; measured with xray as both
+      ends) to <code>www.bing.com</code>. Everything survives reboot; backups kept on the server. Measured from this PC through
+      mihomo: <b>anytls 5.24 MB/s / 523 ms · http-3128 5.26 · reality 4.78 / 991 ms · trojan 4.42 · ss 2.06</b> — the current
+      free member (<code>aliyun-native</code>, ss) is the slowest of the TCP family, and anytls is the candidate to promote into
+      the mix. hysteria2 stays BENCH-only (QUIC cannot cross the TCP SOCKS hop, and the cellular uplink's UDP flaps). These new
+      outbounds are <b>not yet in the live config</b>; the bench rig lives in <code>state\aliyun-bench\</code>.</td></tr>
+  <tr><td><b>The manual trio</b></td>
+      <td><code>start-all.bat</code> (the stack, then HypoMux check + the system proxy set <b>only when mihomo answers</b>, then
+      verification with <code>start-network.ps1 --check</code>) · <code>stop-all.bat</code> (stop + hotspot + <b>proxy off</b>, so
+      nothing is left pointing at a mihomo that is gone) · <code>fixall.bat</code> (clear everything and repair back to a working
+      Windows default). Nothing in the trio drives HypoMux: start-all launches the GUI if it is missing and reports the dialer.
+      Nested bats use <code>call</code> on purpose — a .bat invoked from a .bat without it never returns (the trap the cmd harness
+      test documents). A RepoHygiene describe pins the trio's wiring.</td></tr>
+  <tr><td><b>The live config was restored after the bench session</b></td>
+      <td><code>mixed-port</code> back to <b>7897</b> (a bench edit had moved it to 17897, where it even collided with a leftover
+      listener — the system proxy and the hotspot clients would have pointed at nothing), and the temporary bench outbounds +
+      listeners were removed; the rig keeps its inputs in <code>state\aliyun-bench\source-outbounds.yaml</code>. <code>mihomo -t</code>
+      re-validated, and the socket-level recheck still shows the Aliyun dials owned by <code>hypomux-engine</code>, never mihomo
+      (mihomo holds only loopback sockets to <code>127.0.0.1:10800</code>).</td></tr>
+  <tr><td><b>Agent control of HypoMux — researched, bounded</b></td>
+      <td>Read from the official sources: protocol v1 (<code>engine.start</code>, live <code>engine.scheduling</code>,
+      <code>engine.telemetry</code>) is the full control surface, but one engine accepts one controlling session; the
+      <code>HypoMuxCore</code> service pipe verifies its client by pinned SHA-256 and rejects anything but the official desktop
+      binary; <code>settings.json</code> is cold (no watcher). The recommended design — gui-owned by default, an explicit agent
+      mode for unattended runs, never both — is §12, awaiting the owner's decisions.</td></tr>
+  <tr><td><b>Suite and checks</b></td>
+      <td><b>404 tests</b> green (Pester, pwsh 7.6.6) and <code>Invoke-RepoChecks</code> <b>9/9</b>. The learner tests were made
+      hermetic (synthetic mihomo log + a loopback mock controller, so they no longer depend on the live stack), the auto-learner
+      now reports per registrable domain instead of per hostname, and <code>fixall.bat</code> is verified by actually RUNNING it
+      with a stubbed PATH (cmd can be run, not parsed — two traps documented in that test).</td></tr>
+</table>
+
+<footer>
+  Generated for design review · Network Stack v6 — renewed 2026-10-11; 2026-10-12: DeepSeek raw-DIRECT exception, the Aliyun protocol set + measured matrix, the manual trio, the restored live config, and the startup control plane (§12, for review) · all measurements taken on this machine<br>
+  Design of record: <code>docs\HYPOMUX-DISTRIBUTION.md</code> — where this page disagrees with it, it wins.<br>
+  Files: <code>NETWORK-STACK.md</code> (markdown twin) · <code>config\mihomo-config.template.yaml</code> ·
+  <code>runtime\config.yaml</code> · <code>src\proxy\Watch-Adapters.ps1</code> (the watcher retired 2026-10-11) ·
+  <code>hypomux-distribution.ps1</code> (the switch that retired it) · <code>tools\</code> (<code>Update-Clashmi911Rules.ps1</code> writes the 911 rule-provider) ·
+  <code>web\balance.html</code> (per-adapter traffic)
+</footer>
+
+</div>
+</body>
+</html>

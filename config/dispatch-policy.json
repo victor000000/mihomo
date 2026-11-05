@@ -1,0 +1,135 @@
+{
+  "enabled": true,
+  "slots": 24,
+  "pollSeconds": 10,
+  "logSeconds": 30,
+  "rebalanceSeconds": 300,
+  "staleHealthSeconds": 100,
+  "ewmaAlpha": 0.2,
+  "capacitiesMbps": {
+    "WAN": {
+      "win_turbo_phone": 0.632,
+      "pisen_2026_10": 2.364,
+      "jd_5G": 5.196,
+      "pisen_2026_03": 10.162
+    },
+    "TOKYO": {
+      "win_turbo_phone": 0.807,
+      "pisen_2026_10": 3.207,
+      "jd_5G": 8.262,
+      "pisen_2026_03": 6.738
+    },
+    "LA": {
+      "win_turbo_phone": 1.786,
+      "pisen_2026_10": 2.042,
+      "jd_5G": 3.832,
+      "pisen_2026_03": 3.252
+    }
+  },
+  "fallbackOrder": [
+    "jd_5G",
+    "pisen_2026_03",
+    "win_turbo_phone",
+    "pisen_2026_10"
+  ],
+  "initialEligible": {
+    "WAN": [
+      "pisen_2026_10",
+      "win_turbo_phone"
+    ],
+    "TOKYO": [
+      "pisen_2026_10",
+      "win_turbo_phone"
+    ],
+    "LA": [
+      "pisen_2026_10",
+      "win_turbo_phone"
+    ]
+  },
+  "capacityEvidence": {
+    "date": "2026-10-30",
+    "kind": "Two completed 512 KiB transfers per changed transport; body-rate scheduling priors, not line capacity. Other priors retained.",
+    "receipt": "state/relocation-20261030-1148/new-transport-calibration.json",
+    "previousEvidence": {
+      "date": "2026-10-30",
+      "kind": "Updated only iPhone/Pisen10 paths with two completed sequential 512 KiB transfers after relocation. Current body-rate priors, not hardware capacity; other paths retain previous priors.",
+      "receipt": "state/slow-links-20261030/calibration.json",
+      "previousReceipt": "state/iphone-20261030/capacity-probes.json",
+      "changes": [
+        {
+          "region": "WAN",
+          "adapter": "win_turbo_phone",
+          "before": 4.617,
+          "after": 0.632
+        },
+        {
+          "region": "WAN",
+          "adapter": "pisen_2026_10",
+          "before": 3.942,
+          "after": 2.364
+        },
+        {
+          "region": "TOKYO",
+          "adapter": "win_turbo_phone",
+          "before": 5.252,
+          "after": 0.807
+        },
+        {
+          "region": "LA",
+          "adapter": "win_turbo_phone",
+          "before": 1.707,
+          "after": 0.44
+        },
+        {
+          "region": "LA",
+          "adapter": "pisen_2026_10",
+          "before": 3.864,
+          "after": 2.042
+        }
+      ]
+    }
+  },
+  "feedbackMode": "observe-only; passive rates and active counts never modify capacity priors",
+  "designReference": "HypoMux bounded allocation and smooth weighted scheduling concepts; implementation uses Mihomo groups and controller API",
+  "privacy": "No credentials, payloads, destination addresses, process paths or raw connection IDs logged",
+  "enabledRegions": [
+    "WAN",
+    "TOKYO"
+  ],
+  "preferredBulkRegion": "TOKYO",
+  "comparisonEvidence": "state/dispatch-upgrade-20261026/comparison.json",
+  "regionalDecision": "Tokyo bulk preference based on bounded equal-work comparisons; LA expansion withheld after no improvement",
+  "regionalStability": {
+    "enabled": true,
+    "minHealthyPaths": 2,
+    "minHealthyChecks": 3,
+    "minimumStableSeconds": 60,
+    "holdDownSeconds": 180
+  },
+  "nativeThetaObserver": {
+    "enabled": true,
+    "distribution": "Ubuntu",
+    "linuxRepositoryRoot": "/mnt/c/users/victo/mihomo",
+    "dataRoot": "/home/vic/data_providers"
+  },
+  "interfaceBindings": {
+    "win_turbo_phone": "iPhone 17 pro max"
+  },
+  "interfaceBindingNote": "win_turbo_phone is a stable logical proxy slot; physical USB adapter is iPhone 17 pro max. The former phone is absent. Existing group selections stay valid.",
+  "proxyUplinkOrder": [
+    "jd_5G",
+    "pisen_2026_10",
+    "win_turbo_phone",
+    "pisen_2026_03"
+  ],
+  "proxyUplinkRoleNote": "ICS shares pisen_2026_03 (2026-10-30 evening), so its interface-bound proxy paths fail while other host traffic still reaches it. Keep it last and out of initialEligible until the hotspot is moved back to jd_5G, then restore pisen_2026_03 first. Validation still requires all four adapters in proxyUplinkOrder.",
+  "adapterProxySources": {
+    "LA-win_turbo_phone": "hy2-upstream",
+    "BALANCED-pisen_2026_10": "hy2-tokyo"
+  },
+  "standbyPaths": {
+    "TOKYO": [
+      "win_turbo_phone"
+    ]
+  }
+}

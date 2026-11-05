@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Network Stack</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2128; --line:#30363d;
+    --txt:#e6edf3; --dim:#8b949e; --ok:#3fb950; --warn:#d29922;
+    --bad:#f85149; --idle:#6e7681; --accent:#58a6ff;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--bg);color:var(--txt);
+    font:13px/1.5 ui-monospace,SFMono-Regular,"Cascadia Mono",Consolas,monospace;
+    padding:14px;
+  }
+  header{display:flex;align-items:center;gap:14px;margin-bottom:14px;flex-wrap:wrap}
+  h1{font-size:15px;font-weight:600;letter-spacing:.3px}
+  .pills{display:flex;gap:6px;flex-wrap:wrap}
+  .pill{
+    display:flex;align-items:center;gap:6px;padding:3px 9px;border-radius:20px;
+    background:var(--panel);border:1px solid var(--line);font-size:11px;
+  }
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--idle);flex:none}
+  .dot.ok{background:var(--ok);box-shadow:0 0 7px var(--ok)}
+  .dot.warn{background:var(--warn);box-shadow:0 0 7px var(--warn)}
+  .dot.bad{background:var(--bad);box-shadow:0 0 7px var(--bad)}
+  .right{margin-left:auto;color:var(--dim);font-size:11px;text-align:right}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:12px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .card h2{
+    font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;
+    color:var(--dim);padding:9px 12px;border-bottom:1px solid var(--line);
+    display:flex;align-items:center;gap:8px;background:var(--panel2);
+  }
+  .card h2 .dot{margin-left:auto}
+  .body{padding:10px 12px}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12px}
+  .kv dt{color:var(--dim);white-space:nowrap}
+  .kv dd{text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sub{color:var(--dim);font-size:11px;margin-top:9px;padding-top:8px;border-top:1px solid var(--line)}
+  .sub b{color:var(--txt);font-weight:600}
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th{color:var(--dim);font-weight:500;text-align:left;padding:3px 6px;border-bottom:1px solid var(--line)}
+  td{padding:3px 6px;border-bottom:1px solid #21262d}
+  tr:last-child td{border-bottom:none}
+  .num{text-align:right;font-variant-numeric:tabular-nums}
+  .tag{padding:1px 6px;border-radius:4px;font-size:10.5px;background:var(--panel2);border:1px solid var(--line)}
+  .tag.ok{color:var(--ok);border-color:#238636}
+  .tag.bad{color:var(--bad);border-color:#8b2c25}
+  .tag.warn{color:var(--warn);border-color:#9e6a03}
+  .tag.accent{color:var(--accent);border-color:#1f6feb}
+  .feed{font-size:11.5px;max-height:190px;overflow-y:auto}
+  .feed div{padding:2.5px 0;border-bottom:1px solid #21262d;display:flex;gap:8px}
+  .feed div:last-child{border-bottom:none}
+  .feed .d{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .feed .o{color:var(--accent);white-space:nowrap}
+  .mono{font-size:11px;color:var(--dim);white-space:pre-wrap;word-break:break-all}
+  .err{color:var(--bad);font-size:11.5px}
+  .wide{grid-column:1/-1}
+  .grp{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #21262d}
+  .grp:last-child{border-bottom:none}
+  .grp .nm{width:64px;font-weight:600}
+  .grp .ty{color:var(--dim);font-size:11px;width:70px}
+  .grp .nw{color:var(--accent);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .grp .ct{color:var(--dim);font-size:11px}
+  .bar{height:5px;background:var(--panel2);border-radius:3px;overflow:hidden;margin-top:5px}
+  .bar i{display:block;height:100%;background:var(--accent)}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>◈ Network Stack</h1><a href="/design" style="color:#58a6ff;font-size:12px;text-decoration:none;border:1px solid #1f6feb;padding:3px 10px;border-radius:6px">design review →</a>
+  <a href="http://127.0.0.1:9097/ui/" style="color:#58a6ff;font-size:12px;text-decoration:none;border:1px solid #1f6feb;padding:3px 10px;border-radius:6px;margin-left:6px">mihomo dashboard (metacubexd) →</a>
+  <div class="pills" id="pills"></div>
+  <div class="right" id="meta">connecting…</div>
+</header>
+
+<div class="grid">
+
+  <div class="card">
+    <h2>Design of record &amp; what changed <span class="sub" style="font-size:11px">renewed 2026-10-11 · updated 2026-10-12</span></h2>
+    <div class="body">
+      <p style="margin:0 0 10px">
+        <a href="http://127.0.0.1:9097/ui/" style="color:#58a6ff;font-size:13px;text-decoration:none;border:1px solid #1f6feb;padding:4px 12px;border-radius:6px">mihomo dashboard — metacubexd →</a>
+      </p>
+      <ul style="margin:0;padding-left:18px;line-height:1.75;font-size:12px">
+        <li><b>One owner per job:</b> mihomo decides <b>policy</b> (rules, which upstream proxy, DNS policy); <b>HypoMux</b> decides <b>which adapter each dial leaves by</b> — <b>every</b> dial, direct included. Chain <code>apps/system proxy → mihomo → HypoMux → the adapters</code>, system proxy on both components, <b>no TUN anywhere</b>. Canonical statement: <code>docs\HYPOMUX-DISTRIBUTION.md</code>.</li>
+        <li><b>2026-10-12 additions:</b> the two <b>DeepSeek rules are raw <code>DIRECT</code></b> (owner: <i>"the deepseek and the deepseekapi must use direct and not proxy, otherwise we cannot visit deepseek here"</i>) — with loop protection, the only rules that bypass the dispatch hop; a RepoHygiene test now pins them. The <b>Aliyun box gained protocols</b> (AnyTLS 8080/tcp, TUIC 18240/udp, Trojan-TLS 18240/tcp; reality moved to <code>0.0.0.0:1080</code> direct, its steal target fixed from <code>www.microsoft.com</code> — which never completed the mirrored handshake — to <code>www.bing.com</code>, and the orphan <code>socat</code> relay retired) and was measured from this PC: <b>anytls 5.24 MB/s · http-3128 5.26 · reality 4.78 · trojan 4.42 · ss 2.06</b> — <code>ss</code> is the slowest of the TCP family, anytls the candidate to promote into the mix; the new outbounds are not yet in the live config (bench rig: <code>state\aliyun-bench</code>). The manual trio is <b>start-all.bat / stop-all.bat / fixall.bat</b>, and the live config's <code>mixed-port</code> was restored to <b>7897</b> after the bench session (a leftover had it on 17897, colliding with a bench listener).</li>
+        <li><b>HypoMux dispatches everything</b> (owner, 2026-10-11 — the day's third revision): direct traffic leaves through the new <code>DISPATCH</code> group = <code>fallback [hypomux, DIRECT]</code>, health-checked on <code>https://www.baidu.com</code> (expected 200, <code>interval: 30</code>, <code>timeout: 5000</code>, <code>lazy: false</code>). <code>hypomux</code> there is the SOCKS5 listener used as a <b>plain dialer</b>: mihomo names the destination, HypoMux opens the socket from the adapter it picks. The <code>DIRECT</code> member is deliberate — HypoMux is now a hop for everything, so if its engine stops the machine must not lose the internet: the group degrades to the OS route. Only loopback (<code>127.0.0.0/8</code>), the private ranges and the two DeepSeek rules stay raw <code>DIRECT</code> — loopback because a NIC-bound socket cannot reach <code>127.0.0.1</code>, where HypoMux (10800) and the ssh tunnel (1080) live, and DeepSeek by owner order (2026-10-12: through any proxy it is unreachable here).</li>
+        <li><b>The proxy path is a 911-first 4:1 mix</b> (owner, 2026-10-11 — the day's fourth change: <i>"for proxy, we can use our 911 connect first and then use the aliyun server proxy (4:1), all through hypomux dispatch"</i>). <code>AUTO</code> — the group every proxy rule resolves through, <code>RULE-SET,clashmi-911</code> included — is a <b><code>load-balance</code> on <code>round-robin</code> with five members</b>: four 911 exits chosen by <code>filter:</code> — <code>香港|HK2022|AT</code> (the owner's main 911 node, 80 ms, fastest of all 49 measured), <code>台湾|TW2035|AT</code> (112 ms), <code>新加坡|SG2034|AT</code> (115 ms), <code>马来西亚|MY2032|AT</code> (118 ms) — plus <code>aliyun-native</code> as the "1" share. <code>lazy: false</code> (it was <code>lazy: true</code>), <code>interval: 60</code>, health check on <code>google/generate_204</code>. Round-robin and not consistent-hashing (hashing pins a destination to ONE member); the ratio is by member count because mihomo groups have <b>no weights</b>; and the four are selected by regex over node <i>names</i>, not listed under <code>proxies:</code>, because a name that disappears would make the whole config invalid — the trap that retired the per-NIC rings (a rename therefore silently shrinks the ratio). Measured over 20 connections: HK 5 · TW 4 · SG 4 · <b>aliyun-native 4</b> · MY 3 — exactly 4 paid : 1 Aliyun, so <b>4 of every 5 proxied connections now spend the metered 911 plan</b>. History kept: <code>AUTO</code> used to be <code>fallback [HYPOMUX-PATH]</code> + <code>use: [clashmi]</code> — free-first, and it was the day's second and third decisions that narrowed the proxied set rather than reordering it.</li>
+        <li><b>The mix's own trap — and the correction to "HYPOMUX-PATH is the free path".</b> The first version used <code>HYPOMUX-PATH</code> as the Aliyun member and sent <b>10 of 10</b> test connections to paid nodes: a silent 0-in-5 Aliyun share. <code>HYPOMUX-PATH = fallback [hy2-upstream, aliyun-native]</code> can never be healthy through HypoMux (hysteria2 is QUIC, the hop is TCP SOCKS), so the group reported itself <b>unhealthy</b> and a load-balance skips unhealthy members. Measured then: <code>aliyun-native</code> <b>366 ms alive</b>, <code>hy2-upstream</code> <b>failed</b>, <code>HYPOMUX-PATH</code> <b><code>alive=false</code></b>. The mix names <code>aliyun-native</code> directly now; <code>HYPOMUX-PATH</code> is still defined but no longer referenced by any policy.</li>
+        <li><b>The dial is what gets distributed:</b> <code>aliyun-native</code> (ss) and <code>hy2-upstream</code> (hysteria2) carry <code>dialer-proxy: hypomux</code>, so every member of the mix still leaves by an adapter HypoMux picks. <code>HYPOMUX-PATH</code> resolves to <code>aliyun-native</code> (hysteria2 cannot cross the TCP SOCKS hop) but nothing routes through that group any more.</li>
+        <li><b>Only what a rule names is proxied — the catch-all is <code>MATCH,DISPATCH</code></b> (owner, 2026-10-11; it was <code>MATCH,DIRECT</code> earlier that day, and <code>MATCH,HYPOMUX-PATH</code> before that — the order is <code>MATCH,LOCAL</code> → <code>MATCH,HYPOMUX-PATH</code> → <code>MATCH,DIRECT</code> → <code>MATCH,DISPATCH</code>). The proxy set is our own rules, the learner's escalations, and the 911 subscription's own must-proxy list, lifted out of that subscription by <code>tools\Update-Clashmi911Rules.ps1</code> into rule-provider <code>clashmi-911</code> (<b>354</b> entries, <code>runtime\rules\clashmi-911.yaml</code>) and referenced as <code>RULE-SET,clashmi-911,AUTO</code> — its 197 <code>DIRECT</code> entries and its <code>MATCH,OpenConnectUs911</code> tail are dropped on purpose. Measured in mihomo's own log: <code>www.163.com</code> → <code>match Match using DISPATCH[hypomux]</code>, <code>futuhk.com</code> → <code>RuleSet(clashmi-911) using AUTO[aliyun-native]</code>, <code>www.youtube.com</code> → <code>AUTO[aliyun-native]</code> — those two <code>AUTO[aliyun-native]</code> readings are from before the 4:1 mix, when the group <i>was</i> that one member; under the mix the same rule shows whichever of the five round-robin picked. Under <code>MATCH,DIRECT</code> the same class of host read <code>www.speedtest.net</code> → <code>match Match using DIRECT</code> — kept as that revision's record.</li>
+        <li><b>Microsoft Store + Windows Update are pinned <code>DISPATCH</code></b> (they were pinned <code>DIRECT</code>), above the auto-learner and above the 911 rule set (first match wins), with <code>DOMAIN,copilot.microsoft.com,AUTO</code> as the deliberate exception placed first — and after the 4:1 mix that exception lands on one of five members, not on the free path by construction. Measured reason: the Store downloads from a domestic CDN at ~17.8 MB/s. Measured result: <code>displaycatalog.mp.microsoft.com</code> → <code>DomainSuffix(microsoft.com) using DISPATCH[hypomux]</code>, <code>download.windowsupdate.com</code> → <code>DomainSuffix(windowsupdate.com) using DISPATCH[hypomux]</code>, and <code>api.deepseek.com</code> read <code>DomainSuffix(deepseek.com) using DISPATCH[hypomux]</code> until 2026-10-12, when the owner ordered DeepSeek back to raw <code>DIRECT</code> (it reads <code>using DIRECT</code> now). <code>AUTO</code>'s health-check interval is <b>60 s</b> (was 120 s) so a post-reload unhealthy window cannot park traffic on a paid node for two minutes — the interval lesson survives the mix, but <code>lazy: true</code> does not: the mix runs <code>lazy: false</code>, because a load-balance needs live health data to skip a dead exit.</li>
+        <li><b>Dispatch proof:</b> <code>hypomux-engine</code> (pid 23188) held <b>25 sockets to non-proxy destinations</b>, split <b>19 via 10.90.126.33 / 6 via 192.168.1.100</b> — ordinary direct traffic genuinely leaving by both NICs under HypoMux's choice — and the same process owned all the upstream sockets (Aliyun 5, paid 112.91.92.129 = 50) with mihomo holding zero on those hosts. Tested through its SOCKS5 on 10800, bypassing mihomo, HypoMux dialled gstatic 204, example.com 200 (6/6 retries clean), microsoft.com 200, proof.ovh.net 200, baidu 200, cloudflare.com 200, github.com 200; <code>wikipedia.org</code> answered 403 through the hop while the plain OS route timed out. No measurable latency cost (baidu 0.204 s vs 0.221 s); one <code>example.com</code> timeout was a transient and did not reproduce. Honest tradeoffs: HypoMux is now a single point of failure for the whole machine (direct traffic survives only via the group's <code>DIRECT</code> fallback, proxied traffic fails), per-connection failures are not retried by mihomo (the fallback is group-level and health-check based), and the auto-learner matters more — its task is currently <code>Disabled</code> (<code>docs\TODO.md</code> P0d).</li>
+        <li><b>NIC selection is human-controlled</b> in the HypoMux GUI: its engine is a child of <code>hypomux.exe</code> driven over the GUI's stdio channel, there is no control API, and no script in this repo drives it. (2026-10-12: the protocol the GUI speaks — v1, with live <code>engine.scheduling</code> and telemetry — is documented from the source; a gui-vs-agent ownership design is section 12 of the design review, still the owner's call.)</li>
+        <li><b>Retired 2026-10-11 — the switch ran for real:</b> the generated per-NIC outbounds, the <code>HY2LB</code>/<code>DIRECT-LB</code>/<code>MIX</code> rings, and the <code>AdapterMonitor</code> watcher that rewrote them are gone from the live config and stopped (task <code>Disabled</code>, zero <code>Watch-Adapters</code> processes). <code>hypomux-distribution.ps1</code> (no arguments; <code>-Check</code> / <code>-Restore</code> / <code>-DryRun</code> / <code>-NoReload</code> / <code>-ConfigPath</code> / <code>-Summary</code>) is the tested switch: exit 0, and a second run left <code>runtime\config.yaml</code> byte-identical. It never starts or stops HypoMux, validates before it stops the watcher, and rolls config + mihomo + watcher back on failure. The weights it carried came from HypoMux's own algorithm, ported and unit-tested — the suite is <b>404</b> tests now (with <code>Invoke-RepoChecks</code> at 9/9).</li>
+        <li><b>DNS is designed, not in force:</b> the policy belongs to mihomo, but the live config has <code>dns.enable: false</code> and UDP <code>:53</code> is held by ICS (the hotspot), so resolution is per adapter today. Open item, not a working resolver.</li>
+        <li><b>SQX / Dukascopy: the whole data source is proxied now</b> (owner, 2026-10-11: <i>"give sqx datadownload all from proxy (dispatch NIC by hypomux as always)"</i>). <code>DOMAIN-SUFFIX,dukascopy.com</code> moved from <code>LOCAL</code> to <b><code>DATA</code></b> — the Dukascopy website included, which used to be direct — with the two hosts SQX actually pulls kept explicit: <code>DOMAIN,datafeed.dukascopy.com,DATA</code> and <code>DOMAIN,freeserv.dukascopy.com,DATA</code>. They target <code>DATA</code> and not the 4:1 mix on purpose: bulk downloads want a <b>few stable exits</b> (Dukascopy terminates TLS from bursty/multi-IP sources — SQX logged 1,138 of those; the free Aliyun exit answers 429), and HK alone downloaded 4/4 files cleanly. <code>DATA = load-balance round-robin</code> over <code>filter: "香港|新加坡|日本|德国"</code>, health-checked on a real Dukascopy tick URL every 600 s. <code>strategyquant.com</code> stays <code>LOCAL</code> — proxying it trips Cloudflare's 403, and that is the SQX <i>site</i>, not its data feed. Verified: <code>datafeed</code> → <code>DATA[香港|HK2022|AT]</code>, <code>freeserv</code> → <code>DATA[日本|JP2021|AT]</code> (429), <code>www</code> → <code>DATA[新加坡|SG2034|AT]</code> (302).</li>
+        <li><b>The course player is Vimeo, and Vimeo was split across two exits</b> (2026-10-25). The tutorial page embeds <code>player.vimeo.com/video/332228885</code>; mihomo sent the player API through <code>RULE-SET(autolearn-paid)</code> to <code>PAID</code> while every media host (<code>vod-adaptive-ak.vimeocdn.com</code>, <code>skyfire.vimeocdn.com</code>, <code>f.vimeocdn.com</code>, <code>i.vimeocdn.com</code>) matched <code>MATCH,DISPATCH</code> and went <b>direct through the phone</b> — where TLS to the CDN failed outright, so segments never arrived. New group <code>VIMEO = fallback [aliyun-native, LA-POOL]</code>, health-checked on <code>https://i.vimeocdn.com/robots.txt</code> (expected 200, 300 s, <code>lazy: false</code>), with <code>DOMAIN-SUFFIX,vimeo.com,VIMEO</code> and <code>DOMAIN-SUFFIX,vimeocdn.com,VIMEO</code> placed above the paid rule set: <b>one exit for API and media</b>, because Vimeo signs each session's URLs — <code>TOKYO-POOL</code> rotated exits between the config call and the playlist and answered <b>403</b>. Measured on one connection: <code>aliyun-native</code> <b>1.68 MB/s</b> (1.22 Fastly) against <code>LA-POOL</code> 0.51; five separate requests read only 0.44 MB/s because each paid its own TLS handshake. The same activation returned <code>strategyquant.com</code> from <code>AUTO</code> to <b><code>LOCAL</code></b> — proxied requests to that host get Cloudflare's interstitial (headless Chrome rendered the challenge through the proxy, the real page without), and the design record already listed the host under <code>LOCAL</code>. After the change, through the unmodified rules: 10/10 segments, 10.37 MB in 5.75 s, <b>1.81 MB/s (~14.4 Mbps)</b>, and a public Vimeo clip played to its end in headless Chrome with every host on <code>VIMEO[aliyun-native]</code>. Not verified: the course video is login-gated, so authenticated playback was not exercised. Evidence: <code>docs\verification\2026-10-25.md</code>.</li>
+        <li><b>Paid spend is no longer bounded by ordering — it is the default:</b> the 4:1 mix sends <b>4 of every 5 proxied connections</b> to the metered plan on purpose, reversing the free-first priority. The old 40 GB byte-counting guard lived in the retired watcher and went with it, so nothing counts bytes today — whether to replace it, or change the ratio, is open (<code>docs\TODO.md</code> P0e). The paid dials <b>are</b> NIC-dispatched: the provider carries <code>override: dialer-proxy: hypomux</code> (its old <code>interface-name: 以太网</code> override removed) — measured 96 sockets in mihomo before the switch, 95 in <code>hypomux-engine</code> after it, mihomo 0.</li>
+        <li><b>Microsoft Store &amp; Update: domestic CDN, pinned DISPATCH (via HypoMux, not the old raw DIRECT), ~17.8 MB/s measured.</b></li>
+        <li><b>PowerShell 7 is the default shell</b> (2026-10-11): every task action is <code>pwsh.exe</code> (7.6.6) except the two WinRT hotspot tasks, which stay on <code>powershell.exe</code> — measured: PS7 cannot project the tethering types (<code>Operation is not supported on this platform. (0x80131539)</code>), and every caller of <code>Hotspot.ps1</code> stays on 5.1 with them. The long-running <code>mihomo-supervisor.ps1</code> (pid 21232) is <b>still hosted by 5.1</b> until its next restart — not restarted on purpose, because it runs mihomo as a pipeline child and killing it takes the proxy down. Tests still run under 5.1 (Pester 5 is installed for 5.1 only).</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>mihomo — policy layer &amp; system proxy <span class="dot" id="d-mihomo"></span></h2>
+    <div class="body">
+      <dl class="kv" id="mihomo-kv"></dl>
+      <div id="mihomo-groups" style="margin-top:10px"></div>
+      <div class="sub" id="mihomo-sub"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>HypoMux — NIC dispatch (<i>mode: proxy</i>, GUI-owned) <span class="dot" id="d-hypomux"></span></h2>
+    <div class="body">
+      <dl class="kv" id="hypomux-kv"></dl>
+      <div class="sub" id="hypomux-sub"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>SmartDNS — <i>retired</i> (DNS policy: mihomo; live: disabled, :53 = ICS) <span class="dot" id="d-smartdns"></span></h2>
+    <div class="body">
+      <dl class="kv" id="smartdns-kv"></dl>
+      <div class="sub" id="smartdns-sub"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Aliyun tunnel — free proxy, and the one path no dialer can take over <span class="dot" id="d-tunnel"></span></h2>
+    <div class="body">
+      <dl class="kv" id="tunnel-kv"></dl>
+      <div class="sub" id="tunnel-sub"></div>
+    </div>
+  </div>
+
+  <div class="card wide">
+    <h2>Links &amp; routing</h2>
+    <div class="body">
+      <table id="links-table">
+        <thead><tr>
+          <th>adapter</th><th>ip</th><th class="num">conns</th>
+          <th>gateway</th><th class="num">gw ms</th><th class="num">probe ms</th>
+          <th>public ip</th><th>default</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="sub" id="links-sub"></div>
+    </div>
+  </div>
+
+  <div class="card wide">
+    <h2>Live routing — mihomo's decisions (which proxy or DIRECT, not which adapter)</h2>
+    <div class="body">
+      <div class="feed" id="feed"></div>
+      <div class="sub" id="feed-sub"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const ms = v => (v==null||v<0) ? '—' : v + ' ms';
+const by = n => n>=1048576 ? (n/1048576).toFixed(1)+' MB' : n>=1024 ? (n/1024).toFixed(1)+' KB' : n+' B';
+
+function dot(el, state){
+  const e = typeof el==='string' ? $(el) : el;
+  if(!e) return;
+  e.className = 'dot ' + (state||'idle');
+}
+function kv(html){ return html; }
+function row(k,v){ return `<dt>${esc(k)}</dt><dd>${v}</dd>`; }
+
+let lastOk = null, fails = 0;
+
+async function tick(){
+  let d;
+  try {
+    const r = await fetch('/api/status', {cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    d = await r.json();
+    if(d.error) throw new Error(d.error);
+    fails = 0;
+  } catch(e){
+    fails++;
+    $('#meta').innerHTML = `<span class="err">collector unreachable (${fails}×)</span><br>${new Date().toLocaleTimeString()}`;
+    return;
+  }
+  lastOk = new Date();
+
+  /* ---- header pills ---- */
+  const P = d.pills || [];
+  $('#pills').innerHTML = P.map(p =>
+    `<span class="pill"><span class="dot ${p.state}"></span>${esc(p.name)}</span>`).join('');
+  const buildMs = (d.build_ms != null) ? d.build_ms : d.elapsed_ms;
+  const observed = Date.parse(d.observed_at || '');
+  const age = Number.isFinite(observed) ? Math.max(0, Math.floor((Date.now()-observed)/1000)) : null;
+  const sampled = age==null ? 'sample time unavailable' : `sample ${age}s old${age>60?' — stale':''}`;
+  $('#meta').innerHTML = `${esc(d.host)}<br><span class="${age!=null&&age>60?'warn':''}">${sampled}</span> · ${buildMs==null?'—':buildMs} ms`;
+
+  /* ---- mihomo ---- */
+  const m = d.mihomo || {};
+  const hp = d.hypomux || {};
+  /* connections_active is the contract (emitted by both writers); fall back to
+     connections so a writer that predates the field cannot render `undefined`. */
+  const act = (m.connections_active != null) ? m.connections_active : m.connections;
+  const carried = (d.schema_version>=1 && hp.carried_conns != null) ? hp.carried_conns : null;
+  dot('#d-mihomo', m.state);
+  if(m.error){ $('#mihomo-kv').innerHTML = `<dt class="err">${esc(m.error)}</dt><dd></dd>`; $('#mihomo-groups').innerHTML=''; }
+  else {
+    $('#mihomo-kv').innerHTML =
+      row('version', esc(m.version)) +
+      row('uptime', esc(m.uptime)) +
+      row('memory', esc(m.memory)) +
+      row('connections', `${act} <span class="tag${carried>0?' accent':''}">${carried==null?'TUN attribution not measured':carried+' observed via HypoMux'}</span>`) +
+      row('downloaded', by(m.download)) +
+      row('uploaded', by(m.upload));
+    const G = m.groups || [];
+    $('#mihomo-groups').innerHTML = G.map(g => {
+      const t = g.type==='Fallback' ? 'accent' : '';
+      return `<div class="grp">
+        <span class="nm">${esc(g.name)}</span>
+        <span class="ty">${esc(g.type)}</span>
+        <span class="nw">▸ ${esc(g.now)}</span>
+        <span class="ct">${g.members} members</span>
+      </div>`;
+    }).join('');
+    /* route accounting from the same live connections: every member of the 4:1 mix
+       (AUTO's four 911 exits and aliyun-native, plus HYPOMUX-PATH's aliyun-native /
+       hy2-upstream) is dialled through the HypoMux hop, so it reads as carried; the
+       mix replaced AUTO's free-first fallback on 2026-10-11, and the older
+       MIX / HY2LB / DIRECT-LB per-NIC buckets were retired with the rings */
+    const R = m.routes || [];
+    const routes = R.length
+      ? '<b>live routes</b> ' + R.map(r => `<span class="tag${r.kind==='hypomux'?' accent':''}">${esc(r.name)} ×${r.count}</span>`).join(' ') + '<br>'
+      : '';
+    $('#mihomo-sub').innerHTML = routes + G.map(g => {
+      const paid = /clashmi/i.test(g.name);
+      return `<b>${esc(g.name)}</b> → ${esc(g.order)}`;
+    }).join('<br>');
+  }
+
+  /* ---- hypomux ---- */
+  const h = d.hypomux || {};
+  const tunMode = h.tun===true || (h.tun==null && h.state==='ok' && h.ports_up===0);
+  dot('#d-hypomux', h.state);
+  $('#hypomux-kv').innerHTML =
+    row('service', `<span class="tag ${h.service==='Running'?'ok':'bad'}">${esc(h.service)}</span>`) +
+    row('GUI process', h.gui ? `<span class="tag ok">running</span> (PID ${h.gui_pid})` : `<span class="tag bad">absent</span>`) +
+    row('ports 10800/10801', tunMode ? 'closed is expected in TUN mode' : `${h.ports_up}/2 listening`) +
+    row('observed carried flows', carried==null ? 'not available from mihomo chains in TUN mode' : esc(carried)) +
+    row('chain-classified flows', `${h.chain_expected_conns==null?'—':h.chain_expected_conns} (policy evidence, not an adapter measurement)`) +
+    row('strategy', `<span class="tag accent">${esc(h.strategy)}</span>`) +
+    row('domain bypass', h.blocked_domain_bypass ? '<span class="tag ok">on</span>' : '<span class="tag warn">off</span>') +
+    row('adapters', esc((h.adapters||[]).join(', '))) +
+    row('engine memory', esc(h.memory));
+  $('#hypomux-sub').innerHTML = tunMode
+    ? `<b>HypoMux TUN ${h.state==='ok'?'ready':'needs attention'}</b> — mihomo opens raw sockets; HypoMux captures their packets. Closed 10800/10801 ports are normal. Adapter distribution must be measured in HypoMux; proxy-chain names alone do not prove it.`
+    : h.ports_up === 2
+      ? `<b>Legacy SOCKS/HTTP dialer listening</b> — explicit <code>hypomux</code> chain entries can identify traffic using that hop.`
+      : `<b>Dispatcher unavailable</b> — neither the expected TUN nor the legacy dialer is ready. Check the HypoMux service and GUI before changing routes.`;
+
+  /* ---- smartdns ---- */
+  const s = d.smartdns || {};
+  dot('#d-smartdns', s.state==='retired' ? 'idle' : s.state);
+  $('#smartdns-kv').innerHTML = s.state==='retired'
+    ? row('status', 'retired — DNS is supplied by mihomo')
+    : row('service', `<span class="tag ${s.service==='Running'?'ok':'bad'}">${esc(s.service)}</span>`) +
+    row('listening', esc(s.listening)) +
+    row('memory', esc(s.memory)) +
+    row('queries (window)', s.queries) +
+    row('failure rate', `<span class="tag ${s.fail_pct<5?'ok':s.fail_pct<15?'warn':'bad'}">${s.fail_pct}%</span>`) +
+    row('cache hit avg', ms(s.hit_ms)) +
+    row('cache miss avg', ms(s.miss_ms)) +
+    row('overseas upstream', s.overseas_ok ? `<span class="tag ok">via tunnel</span>` : `<span class="tag bad">degraded</span>`);
+  $('#smartdns-sub').innerHTML = s.state==='retired' ? 'Not a required component of the current stack.' : (s.top||[]).length
+    ? 'top queried: ' + s.top.map(t=>`<b>${esc(t.name)}</b>×${t.n}`).join('  ')
+    : 'no audit data in window';
+
+  /* ---- tunnel ---- */
+  const t = d.tunnel || {};
+  dot('#d-tunnel', t.state);
+  $('#tunnel-kv').innerHTML =
+    row('task', `<span class="tag ${t.task==='Running'?'ok':'bad'}">${esc(t.task)}</span>`) +
+    row('port 1080', t.port ? '<span class="tag ok">LISTEN</span>' : '<span class="tag bad">down</span>') +
+    row('ssh pid', esc(t.pid)) +
+    row('uptime', esc(t.uptime)) +
+    row('probe', t.probe_ms==null ? '—' : `<span class="tag ${t.probe_ok?'ok':'bad'}">${esc(t.probe_code)}</span> ${ms(t.probe_ms)}`) +
+    row('host', esc(t.host));
+  $('#tunnel-sub').innerHTML = (t.log||[]).length
+    ? '<b>supervisor log</b><br>' + t.log.map(l=>esc(l)).join('<br>')
+    : '';
+
+  /* ---- links ---- */
+  const L = d.links || [];
+  $('#links-table tbody').innerHTML = L.map(l => `<tr>
+      <td>${esc(l.name)}</td>
+      <td class="mono" style="padding:3px 6px">${esc(l.ip)}</td>
+      <td class="num">${l.conns}</td>
+      <td class="mono" style="padding:3px 6px">${esc(l.gateway)}</td>
+      <td class="num">${l.gw_ms==null?'—':l.gw_ms}</td>
+      <td class="num">${l.probe_ms==null?'—':l.probe_ms}</td>
+      <td class="mono" style="padding:3px 6px">${esc(l.public_ip||'—')}</td>
+      <td>${l.default ? '<span class="tag accent">yes</span>' : ''}</td>
+    </tr>`).join('');
+  const sameUplink = L.length>1 && L.every(l=>l.public_ip) &&
+                     L.map(l=>l.public_ip).filter((v,i,a)=>a.indexOf(v)===i).length===1;
+  $('#links-sub').innerHTML = sameUplink
+    ? `<b style="color:var(--warn)">⚠ all adapters share one public IP (${esc(L[0].public_ip)})</b> — one uplink, so aggregation cannot add bandwidth; HypoMux's value here is per-dial adapter choice and failover, not speed. These per-adapter numbers are <b>mihomo's</b> own accounting (its direct connections and whatever it dials itself); the adapter a <i>proxied</i> dial leaves by is HypoMux's, so its per-NIC split is only in the GUI — this page shows its total as <span class="tag accent">${carried==null?'—':carried} via HypoMux</span>.`
+    : `<b>${L.length}</b> adapters, <b>${L.filter(l=>l.public_ip).map(l=>l.public_ip).filter((v,i,a)=>a.indexOf(v)===i).length}</b> distinct public IP(s) — independent uplinks detected. These per-adapter numbers are <b>mihomo's</b> own accounting, not HypoMux's per-NIC split (that lives in the GUI; the total is <code>hypomux.carried_conns</code>).`;
+
+  /* ---- routing feed ---- */
+  const F = d.feed || [];
+  $('#feed').innerHTML = F.map(f => `<div>
+      <span class="d">${esc(f.domain)}</span>
+      <span class="o">${esc(f.out)}</span>
+      <span class="ct" style="color:var(--dim)">${esc(f.rule||'')}</span>
+    </div>`).join('') || '<div style="color:var(--dim)">no decisions logged yet</div>';
+  const counts = {};
+  F.forEach(f => { const k = f.out.split('[')[0]; counts[k] = (counts[k]||0)+1; });
+  $('#feed-sub').innerHTML = 'last ' + F.length + ' decisions — ' +
+    Object.entries(counts).map(([k,v])=>`<b>${esc(k)}</b> ${v}`).join(' · ');
+}
+
+tick();
+setInterval(tick, 2000);
+</script>
+</body>
+</html>

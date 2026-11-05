@@ -1,0 +1,19 @@
+{
+  "mode": "mihomo",
+  "ordinaryTransport": "windows-direct",
+  "connectionBalance": true,
+  "standbyAdapters": [
+    "jd_5G"
+  ],
+  "hotspotUplink": {
+    "enabled": true,
+    "prefer": [
+      "jd_5G",
+      "pisen_2026_03",
+      "pisen_2026_10",
+      "iPhone 17 pro max"
+    ],
+    "note": "Prioritize HypoMux client speed (user request 2026-10-30): share jd_5G, measured 39-42 Mbps direct versus pisen_2026_03 12.8 Mbps. Reserve pisen_2026_03 as first Mihomo/Codex transport while ICS owns jd_5G. Sharing blocks interface-bound Mihomo traffic on the public adapter. No client-side speed certification yet."
+  },
+  "dispatchPolicy": "config/dispatch-policy.json"
+}

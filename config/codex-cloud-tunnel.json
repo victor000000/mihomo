@@ -1,0 +1,9 @@
+{
+  "enabled": true,
+  "hostname": "codex-cloud-backend.chatgpt.com",
+  "device": "CodexCloud",
+  "egressPort": 19989,
+  "mixedPort": 19990,
+  "controllerPort": 19997,
+  "refreshSeconds": 60
+}

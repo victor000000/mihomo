@@ -1,0 +1,148 @@
+# =============================================================================
+#  Domestic (mainland China) domain suffixes.
+#
+#  The auto-learner must NEVER route these through a proxy, no matter how many
+#  direct connections to them fail. They are telemetry / background endpoints
+#  that time out routinely, and proxying them makes them slower while consuming
+#  the metered 50 GB plan.
+#
+#  Why a curated list instead of something clever:
+#    * SmartDNS's audit was tried first. Its "lookup_source" column only says
+#      "Server: china" for a non-cached answer, so a tail of 8000 rows yielded
+#      just 36 domains - and missed exactly the offenders we care about
+#      (doubao.com, zijieapi.com, aliyuncs.com were all absent because they were
+#      served from cache).
+#    * IP geolocation would work but needs a maintained CIDR database.
+#  So: a small, explicit, easy-to-extend list. Add to it when review shows the
+#  learner proposing something that should stay local.
+#
+#  Format: one suffix per line. '#' starts a comment. Blank lines ignored.
+#  A .cn TLD is always treated as domestic and does not need to be listed.
+# =============================================================================
+
+# --- ByteDance / Doubao ---
+doubao.com
+zijieapi.com
+bytedance.com
+bytedance.net
+feishu.cn
+feishu.net
+snssdk.com
+pstatp.com
+toutiao.com
+ixigua.com
+
+# --- Tencent ---
+qq.com
+tencent.com
+tencent-cloud.com
+myqcloud.com
+qpic.cn
+gtimg.cn
+weixin.com
+wechat.com
+
+# --- Alibaba ---
+aliyun.com
+aliyuncs.com
+alibaba.com
+alibaba-inc.com
+alibabacloud.com
+alibabachengdun.com
+taobao.com
+tmall.com
+tmall.hk
+alipay.com
+alipayobjects.com
+alipcsec.com
+alicdn.com
+tbcdn.cn
+
+# --- Baidu / NetEase / Sina / Sohu ---
+baidu.com
+bdstatic.com
+baidubce.com
+163.com
+126.net
+netease.com
+youdao.com
+sina.com.cn
+sina.com
+weibo.com
+sohu.com
+zhihu.com
+bilibili.com
+hdslb.com
+
+# --- Finance / trading (deliberately direct, measured faster) ---
+eastmoney.com
+xueqiu.com
+futunn.com
+futu5.com
+szse.cn
+sse.com.cn
+ibkr.com.cn
+ibllc.com.cn
+
+# --- Hardware / OEM telemetry ---
+hicloud.com
+huawei.com
+honor.com
+xiaomi.com
+mi.com
+oppo.com
+vivo.com
+lenovo.com
+chinamobile.com
+10086.cn
+189.cn
+wo.cn
+
+# --- Other major CN platforms ---
+jd.com
+# JD ecosystem: the SSO round-trip and the storefronts behind it ride SEPARATE
+# registrable domains (seen live 2026-10-16 while signing in), so listing jd.com
+# alone left each of them one direct-timeout away from the learner's proxy
+# buckets. jddebug.com / alipcsec.com were already learned that way and carry
+# owner pins in the config - these entries keep them, and their siblings, from
+# ever being learned again.
+360buyimg.com
+healthjd.com
+jd.hk
+jdbusiness.com
+jdcloud.com
+jddj.com
+jddebug.com
+jdh.com
+jdindustry.com
+jdl.com
+jdpay.com
+jdwl.com
+jkcsjd.com
+yiyaojd.com
+360.cn
+qihoo.com
+so.com
+sogou.com
+ctrip.com
+meituan.com
+dianping.com
+pinduoduo.com
+yangkeduo.com
+kuaishou.com
+douyin.com
+deepseek.com
+moonshot.cn
+zhipuai.cn
+baichuan-ai.com
+aliyuncs.com
+csdn.net
+gitee.com
+oschina.net
+cnblogs.com
+
+# --- analytics / tracking seen proposed by the learner ---
+mmstat.com
+cnzz.com
+umeng.com
+

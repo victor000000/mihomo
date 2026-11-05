@@ -1,0 +1,42 @@
+[
+  {
+    "name": "jd_5G",
+    "routeMetric": 0,
+    "mac": "02-00-00-00-00-01",
+    "ipv4Address": "192.168.0.250",
+    "prefixLength": 24,
+    "gateway": "192.168.0.1",
+    "interfaceGuid": "BB913287-8698-4825-9371-7C3B14D714D5",
+    "pnpDeviceId": "USB\\VID_2DEE&PID_4D51&MI_00\\6&2881dd40&0&0000",
+    "interfaceMetric": 10
+  },
+  {
+    "name": "pisen_2026_03",
+    "routeMetric": 10,
+    "mac": "02-00-00-00-00-04",
+    "ipv4Address": "192.168.1.100",
+    "prefixLength": 24,
+    "gateway": "192.168.1.1",
+    "interfaceGuid": "084F5C78-25A1-4808-B0B0-B82022FBEF01",
+    "pnpDeviceId": "USB\\VID_1286&PID_4E3D&MI_00\\6&2049542b&0&0000",
+    "interfaceMetric": 30
+  },
+  {
+    "name": "iPhone 17 pro max",
+    "proxySlot": "win_turbo_phone",
+    "routeMetric": 5,
+    "mac": "02-00-00-00-00-03",
+    "interfaceGuid": "B451DDE7-9AD0-4D51-A55F-088B698F8596",
+    "pnpDeviceId": "USB\\VID_05AC&PID_12A8&MI_02\\7&214bcefc&0&0002",
+    "interfaceMetric": 20
+  },
+  {
+    "name": "pisen_2026_10",
+    "routeMetric": 30,
+    "mac": "02-00-00-00-00-02",
+    "interfaceGuid": "37E5886E-73D5-4C8D-8044-615C97EA18DF",
+    "pnpDeviceId": "USB\\VID_19D2&PID_0558&MI_00\\7&1a9aeae7&0&0000",
+    "interfaceMetric": 40,
+    "ipv4Mtu": 1400
+  }
+]

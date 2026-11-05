@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Checks and tests (PowerShell ${{ matrix.powershell }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        powershell: ['5.1', '7']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test native multi-adapter policy
+        shell: pwsh
+        run: |
+          python -m pip install -r tests/requirements.txt
+          python -m unittest discover -s tests/gateway -p "test_*.py"
+
+      - name: Bootstrap exact repository-local test dependencies
+        shell: ${{ matrix.powershell == '7' && 'pwsh' || 'powershell' }}
+        run: ./tools/Initialize-TestEnvironment.ps1
+
+      # One authoritative check entry point; includes syntax checks for root,
+      # product, tools and tests. Config/domestic/mix/ignore and synthetic learner
+      # guards are also ordinary Pester tests, not separate inline YAML programs.
+      - name: Run repository checks
+        shell: ${{ matrix.powershell == '7' && 'pwsh' || 'powershell' }}
+        run: ./tools/Invoke-RepoChecks.ps1 -Quiet
+
+      - name: Run hermetic tests
+        id: tests
+        shell: ${{ matrix.powershell == '7' && 'pwsh' || 'powershell' }}
+        run: ./tests/Run-Tests.ps1 -CI -Verbosity Detailed
+
+      - name: Upload engine-scoped XML results
+        if: always() && steps.tests.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-powershell-${{ matrix.powershell }}
+          path: artifacts/test-results/powershell-${{ matrix.powershell }}.xml
+          if-no-files-found: error
+
+      - name: Build source bundle
+        if: success() && matrix.powershell == '7'
+        shell: pwsh
+        run: ./tools/Build-SourceBundle.ps1
+
+      - name: Validate packaged source without a deployment
+        id: source-export
+        if: success() && matrix.powershell == '7'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $workspace = (Get-Location).Path
+          $export = Join-Path ([IO.Path]::GetTempPath()) ('mihomo-source-' + [guid]::NewGuid().ToString('N'))
+          $null = [IO.Directory]::CreateDirectory($export)
+          try {
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            [IO.Compression.ZipFile]::ExtractToDirectory((Join-Path $workspace 'artifacts/mihomo-toolkit.zip'), $export)
+            $modules = Join-Path $export '.tools/Modules/Pester'
+            $null = New-Item -ItemType Directory -Path $modules -Force
+            Copy-Item -LiteralPath (Join-Path $workspace '.tools/Modules/Pester/5.5.0') -Destination $modules -Recurse
+            $shell = Join-Path $PSHOME 'pwsh.exe'
+            & $shell -NoProfile -File (Join-Path $export 'tools/Invoke-RepoChecks.ps1') -RepoRoot $export -Quiet
+            if ($LASTEXITCODE -ne 0) { throw 'Packaged source checks failed.' }
+            & $shell -NoProfile -File (Join-Path $export 'tests/Run-Tests.ps1') -CI -Verbosity Detailed -ResultsPath (Join-Path $workspace 'artifacts/test-results/source-export-7.xml')
+            if ($LASTEXITCODE -ne 0) { throw 'Packaged source tests failed.' }
+          } finally {
+            Remove-Item -LiteralPath $export -Recurse -Force
+          }
+
+      - name: Upload packaged-source XML results
+        if: always() && matrix.powershell == '7' && steps.source-export.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-source-export
+          path: artifacts/test-results/source-export-7.xml
+          if-no-files-found: error
+
+      - name: Upload source bundle
+        if: success() && matrix.powershell == '7'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mihomo-toolkit-source
+          path: artifacts/mihomo-toolkit.zip
+          if-no-files-found: error
+
+  dashboard:
+    name: Dashboard behavior
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Exercise actual dashboard script with offline fixtures
+        run: node --test tests/web/dashboard.test.cjs

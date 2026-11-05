@@ -1,0 +1,1587 @@
+﻿# =============================================================================
+#  mihomo config - SANITIZED TEMPLATE  (committed)
+#
+#  A sanitized routing baseline, not a lossless export of this machine's live file.
+#  Machine-specific groups, LAN exposure and diagnostic pins may differ. Use
+#  tools\Compare-ConfigPolicy.ps1 before deployment; never overwrite a working
+#  runtime\config.yaml just to synchronize this template.
+#  It is committed so the ROUTING DESIGN is versioned - DNS policy, rule order,
+#  the quota guards, and which outbound each group falls back to. The live file
+#  is deliberately NOT committed (see .gitignore): it carries the real values.
+#
+#  THE DESIGN OF RECORD (renewed 2026-10-11; egress-TUN revision 2026-10-14):
+#  mihomo owns POLICY - what is proxied, which upstream proxy, DNS - as the
+#  Windows system proxy on 127.0.0.1:7897, with the controller on 127.0.0.1:9097
+#  and a resolver on 127.0.0.1:53 (live: enabled since 2026-10-13). HypoMux owns
+#  NIC DISPATCH: it runs its TUN, captures mihomo's raw egress sockets and
+#  spreads them across the physical NICs (GUI rule: process mihomo.exe ->
+#  多网卡聚合). mihomo's own TUN stays off - the only TUN is HypoMux's. Nothing
+#  in this file picks an adapter.
+#  Canonical statement: docs\HYPOMUX-DISTRIBUTION.md - it beats this comment.
+#
+#  HISTORY - 2026-10-11 12:2x-12:4x: hypomux-distribution.ps1 applied
+#  this file's shape to the live runtime\config.yaml (exit 0; a second run left it
+#  byte-identical). The live config holds only hy2-upstream / hypomux /
+#  aliyun-native / aliyun-la, with HYPOMUX-PATH = fallback [hy2-upstream,
+#  aliyun-native], AUTO = fallback [HYPOMUX-PATH] + use: [clashmi],
+#  LOCAL = select [DISPATCH, DIRECT], BENCH = select [aliyun-native, hy2-upstream, aliyun-la].
+#  Measured acceptance: HypoMux's engine held 28-30 sockets to 192.0.2.10:443
+#  across both NICs and 95 to the 911 provider host, mihomo 0 in both cases.
+#
+#  To provision a NEW installation (not replace an existing live profile):
+#    1. copy to runtime\config.yaml
+#    2. replace all credential placeholders, including REPLACE-UUID variants (the
+#       dummy ss key is well-formed so the template can be syntax-tested)
+#    3. the GENERATED:* BEGIN/END markers delimit the LEGACY per-NIC ring regions.
+#       Keep the markers; do NOT put per-NIC outbounds back - mihomo no longer
+#       distributes by adapter. src\proxy\Watch-Adapters.ps1 (the AdapterMonitor
+#       task) is legacy, and retired: under this design it no longer writes them,
+#       the task is Disabled with zero Watch-Adapters processes (2026-10-11), and
+#       hypomux-distribution.ps1 is the tested switch that retired them - it ran
+#       for real on the live config at 12:2x on 2026-10-11 (exit 0, idempotent).
+#
+#  The three secrets, and where the live copies come from
+#    __SS_PASSWORD__        shadowsocks key          C:\ProgramData\smartdns\aliyun_la
+#    __HY2_PASSWORD__       hysteria2 password       config\hysteria2.json
+#    __SUBSCRIPTION_TOKEN__ ClashMi/911 subscription - the URL *is* the credential:
+#                           anyone holding it spends the metered 50 GB plan
+# =============================================================================
+# =============================================================================
+#  mihomo - Traffic Splitter (the POLICY half of the stack)
+#
+#  Architecture, renewed 2026-10-11 - one owner per job:
+#    Windows apps
+#       |  DNS (design: mihomo's resolver) |  traffic (system proxy 127.0.0.1:7897)
+#       v                                 v
+#    mihomo :53 (written; off)       mihomo :7897 / :9097         POLICY ONLY
+#       |  nameserver-policy splits      |  rules: what is proxied at all
+#       |  domestic / overseas, DoH;     |  groups: which upstream proxy
+#       |  respect-rules keeps those     |
+#       |  DoH queries on the rules      v
+#       |                            HYPOMUX-PATH (fallback)
+#       |                              hy2-upstream   hysteria2 - QUIC cannot cross
+#       |                              aliyun-native  ss        HypoMux's TCP SOCKS
+#       |                                   |                   hop, so this one wins
+#       |                                   |  dialer-proxy: hypomux
+#       |                                   v
+#       |                            HypoMux  socks5 :10800     DISTRIBUTION ONLY
+#       |                              picks the NIC per dial; weights and
+#       |                              strategy are set in its GUI, BY HAND
+#       |                                   v
+#       |                             以太网 / 以太网 2 -> 192.0.2.10 (Aliyun)
+#       `-- everything else -> LOCAL = select [DISPATCH, DIRECT]: direct internet,
+#                              NIC still chosen by HypoMux, no quota
+#
+#  The catch-all is MATCH,DISPATCH (owner, 2026-10-11): only what a rule names is
+#  proxied - our measured set, the 911 subscription's own must-proxy list
+#  (RULE-SET,clashmi-911) and the learner's escalations - and Store/Update are
+#  pinned DIRECT ahead of everything. mihomo holds NO per-NIC outbounds and NO
+#  adapter load-balance rings - the GENERATED per-NIC rings below are legacy, and
+#  retired: the switch emptied those bodies on 2026-10-11. The
+#  911 paid pool stays a mihomo concern (PAID, and the free-then-paid ordering of
+#  AUTO): a metered 50 GB plan, and since the fourth change of 2026-10-11 the 911 exits lead it 4:1. The
+#  byte-counting spend guard did NOT survive - it lived in the retired watcher, so
+#  paid spend is bounded by that ordering alone; whether to reinstate a counter is
+#  an open decision (docs\TODO.md).
+# =============================================================================
+
+# ---------------------------- Core ----------------------------
+mixed-port: 7897                 # HTTP + SOCKS5 on one port
+allow-lan: false
+bind-address: 127.0.0.1
+mode: rule
+# ---------------------------- TUN -----------------------------
+# OFF BY DESIGN: the renewed stack is system proxy on both halves, no TUN
+# anywhere. Kept as the record of the TUN design, which captured what the system
+# proxy cannot (Windows Update, Delivery Optimization, any application that
+# ignores the proxy, and the hotspot's clients) and needed wintun.dll beside the
+# binary (0.14.1 here) plus elevation/SYSTEM - both true while it ran.
+#
+# If TUN is ever turned back on, this is why route-exclude-address matters: the
+# upstream nodes carry no interface-name, and mihomo's dialer hop to HypoMux is
+# on 127.0.0.1 - without these holes mihomo's own dials could be captured by its
+# own TUN.
+tun:
+  enable: false
+  stack: system
+  device: mihomo
+  auto-route: true
+  auto-detect-interface: true
+  dns-hijack:
+    - any:53
+  route-exclude-address:
+    - 192.0.2.10/32      # Aliyun tunnel
+    - 112.91.92.129/32      # 911 entry host
+    - 127.0.0.0/8
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    # Microsoft Store / Update CDN families, kept off the tunnel so Delivery
+    # Optimization uses the direct path (measured 17.8 MB/s before TUN).
+    - 58.58.78.0/24
+    - 140.249.153.0/24
+    - 150.138.210.0/24
+    - 120.222.240.0/24
+    - 120.222.145.0/24
+    - 192.168.0.0/16
+    - 169.254.0.0/16
+
+# NOT load-bearing any more: with no TUN, mihomo IS the system proxy, so the
+# destination domain arrives in the request itself (CONNECT host / SOCKS request)
+# and DOMAIN-SUFFIX rules match it directly. Kept enabled for the trap it records
+# from the TUN design: with enhanced-mode "normal" (no fake-ip) the packets
+# arrived as bare IPs, so without sniffing every GEOSITE and DOMAIN-SUFFIX rule
+# would have missed and fallen through to the catch-all (MATCH,LOCAL then,
+# MATCH,HYPOMUX-PATH after the renewal, MATCH,DIRECT, MATCH,DISPATCH since 2026-10-11).
+sniffer:
+  enable: true
+  sniff:
+    TLS:
+      ports: [443, 8443]
+    HTTP:
+      ports: [80, 8080-8880]
+      override-destination: true
+log-level: info
+# ON since 2026-10-17 (owner: "do we need proxy https://optionomega.com/" +
+# "you can use ipv6 in mihomo"). OptionOmega's whole optionomega.com family
+# resolves to an IPv4 that is HARD-RESET here - 35.201.105.186 refused every
+# TLS handshake, 6/6 attempts - while the same name's IPv6 2600:1901:0:dc13::
+# answered 200 in 0.2-0.6 s, 6/6. With this switch off mihomo asked DNS for A
+# only and dialled that dead v4 address, so every direct request through the
+# proxy (Chrome included) died at the handshake while the OS, which also tries
+# AAAA, mostly succeeded. tcp-concurrent (below) races the families, so a v6
+# answer that cannot be reached still falls back to v4 in the same dial.
+ipv6: true
+unified-delay: true
+tcp-concurrent: true
+# Process matching is ON since 2026-10-12 (owner: "i still cant open microsoft store, recheck the
+# network for this"). It was 'off', which made every PROCESS-NAME rule in the file DEAD CODE -
+# measured: across the whole log, ZERO lines ever read `match ProcessName`, and the Store's own
+# process rules (WinStore.App, Microsoft.WindowsStore, StoreDesktopExtension, wsappx) could never
+# fire. That mattered because those rules are the durable half of the Store/Update design: a host
+# list can never be complete for an app that picks its CDN. `strict` (not `always`) so a
+# connection is matched against the process only when the rule set needs it - the cheaper mode,
+# and the one the rule-integrity checks assume.
+find-process-mode: 'strict'
+keep-alive-interval: 30
+geodata-mode: false
+
+external-controller: 127.0.0.1:9097
+secret: ''
+external-ui: ui                  # metacubexd (runtime\ui), served at /ui/
+
+profile:
+  store-selected: true           # remember manual picks across restarts
+  store-fake-ip: false
+
+# ---------------------------- DNS -----------------------------
+# mihomo owns the DNS POLICY in this design: the nameserver-policy split below is
+# the written design and stays whole.
+#
+# RESOLUTION is settled too, since 2026-10-13 (owner): mihomo owns it and the OS
+# resolver points at 127.0.0.1. The listener sits on loopback :53 (Windows' DNS
+# client has no port option), and the bind is address-specific, so it coexists
+# with ICS's 0.0.0.0:53 wildcard - measured 2026-10-13: both listeners bound,
+# mihomo answered 127.0.0.1:53 (hosts pin + overseas policy names clean), and the
+# hotspot relay on 192.168.137.1 kept answering its clients. WLAN's IPv6 DNS is
+# pinned to ::1 (static beats the router's RDNSS fe80::1234, which WAS answering
+# AAAA when queried - a leak path around mihomo; ::1 refuses fast).
+# HISTORY (kept, marked): until 2026-10-13 the listener was 127.0.0.1:1053 with
+# resolution left per-adapter, because ICS holds :53; the loopback-specific bind
+# turned out to coexist, so nothing had to yield. docs\TODO.md (P2 DNS item)
+# carries the measurements; `state\dns-backup.json` is the SmartDNS-era rollback
+# record.
+# hosts - mihomo's OWN resolution AND the answers it serves to clients through its DNS
+# (use-hosts + dns.enable, both live). These mirror the Windows hosts pins: that copy is
+# the belt (it fixes programs even with mihomo stopped; it was restored 2026-10-14 after
+# the morning fixall had wiped it), this copy is what client DNS gets - MEASURED
+# 2026-10-14: `nslookup datafeed.dukascopy.com 127.0.0.1` -> 194.8.15.155 (the pin),
+# while the raw upstream chain answers .180 (the address that resets).
+hosts:
+  # StrategyQuant's DOWNLOAD fleet -> the HK edge (EU edges are 380-800 ms away, HK 71-98 ms).
+  # cdn.strategyquant.com is the exception - it must NOT take this pin. MEASURED 2026-10-14:
+  # the HK edge 404s /public/sqxhome/, and that URL is SQXHome's online check
+  # (SQXHomeServlet.isOnline(): a successful GET is what turns "Offline Mode" off, a 404
+  # throws and forces it on). The real CDN box - 49.13.173.89, the answer AliDNS and Google
+  # DoH both give - serves it, so the name resolves to the EU box; the cdn00N download fleet
+  # keeps the HK edge. Refresh: Resolve-DnsName cdn.strategyquant.com -Server 223.5.5.5
+  'cdn.strategyquant.com': 49.13.173.89
+  'cdn.strategyquantcdn.com': 8.210.228.126
+  'cdn001.strategyquantcdn.com': 8.210.228.126
+  'cdn002.strategyquantcdn.com': 8.210.228.126
+  'cdn003.strategyquantcdn.com': 8.210.228.126
+  'cdn004.strategyquantcdn.com': 8.210.228.126
+  'cdn005.strategyquantcdn.com': 8.210.228.126
+  # Dukascopy's data feed -> the address that ANSWERS. Re-measured 2026-10-14: .180
+  # completes the TCP handshake and then RESETS the request; .155 completes it (429 = the
+  # documented per-IP rate limit). Without the pin the resolver hands clients .180 and the
+  # poisoned DoH fallback hands Dropbox ranges; an IP-connect then matches only the
+  # IP-CIDR,194.8.15.0/24 rule, and the DOMAIN rules never fire. The Windows hosts pin for
+  # these names was lost (fixall 2026-10-14); this copy is what clients get now.
+  'datafeed.dukascopy.com': 194.8.15.155
+  'freeserv.dukascopy.com': 194.8.15.155
+  'www.usvisascheduling.com': 172.64.146.157
+  'usvisascheduling.com': 172.64.146.157
+  # OptionOmega (owner, 2026-10-17): the apex/www/app family's IPv4
+  # 35.201.105.186 is HARD-RESET at the TLS handshake from here (6/6 attempts),
+  # while the same names' GCP anycast IPv6 2600:1901:0:dc13:: answers 200 in
+  # 0.2-0.6 s (6/6). mihomo's resolver prefers A whenever both families exist
+  # (component/resolver ResolveIPWithResolver), so turning `ipv6: true` on did
+  # not move the dial - it still pinned the dead v4. These pins make the name
+  # v6-only so the DIRECT catch-all can carry them. docs./academy.optionomega.com
+  # are Cloudflare-fronted on different addresses and keep DNS.
+  # Refresh: Resolve-DnsName app.optionomega.com -Type AAAA
+  'optionomega.com': '2600:1901:0:dc13::'
+  'www.optionomega.com': '2600:1901:0:dc13::'
+  'app.optionomega.com': '2600:1901:0:dc13::'
+
+dns:
+  # ENABLED 2026-10-11 (was false since the SmartDNS retirement): with resolution
+  # left to the system resolver, poisoned names were dialled as dead IPs, those dials failed,
+  # and DISPATCH fell through to its DIRECT member - dispatch silently off for everything.
+  # Measured the day it was enabled: datafeed.dukascopy.com resolved to 157.240.10.32 (a
+  # Facebook range) through the system resolver and to 199.96.58.177 through this one.
+  enable: true                 # live since 2026-10-13: loopback :53, OS resolver -> 127.0.0.1
+  # The resolver written to replace SmartDNS, removed 2026-10-10:
+  #   * it saved only ~12 ms (measured 45.6 ms vs 58.2 ms on 30 concurrent names)
+  #   * it PANICS and dies when a bind address stops existing (os error 10049),
+  #     which took the whole machine's DNS down when a NIC lost its uplink:
+  #       panicked at src\server\net.rs:29:21: cound not bind to UDP: 192.168.1.100:53
+  #   * it needed its own upstream-proxy hop, which was the last consumer of the
+  #     ssh -D tunnel - the one path that could not be HypoMux-distributed
+  # A cache that can panic is not worth 12 ms.
+  # Loopback :53, not the wildcard: ICS still holds 0.0.0.0:53 for the hotspot's
+  # clients, and the address-specific bind coexists with it (measured 2026-10-13).
+  # The OS resolver (WLAN / 以太网 2 / 以太网 3) now points here; WLAN's IPv6 DNS
+  # is pinned to ::1 so no v6 resolver can bypass mihomo.
+  listen: 127.0.0.1:53
+  # Return AAAA too (2026-10-17, with the top-level ipv6 switch): optionomega.com's
+  # IPv4 is GFW-reset and its IPv6 is not - A-only resolution made the DIRECT
+  # catch-all dial a dead address. The v6-only resolver bypass this file guards
+  # against (WLAN's RDNSS at ::1) is still closed: AAAA now comes from mihomo's
+  # own DoH upstreams, i.e. through the same dispatch as everything else.
+  ipv6: true
+  enhanced-mode: normal          # no fake-ip: system-proxy mode gives us real domains
+  use-hosts: true
+  use-system-hosts: true
+  # mihomo's own DNS traffic must obey the routing rules, otherwise the overseas
+  # DoH endpoints below would be dialled directly and get poisoned.
+  respect-rules: true
+  # Bootstrap only - plain IPs, used to resolve the DoH hostnames themselves.
+  default-nameserver:
+    - 223.5.5.5
+    - 119.29.29.29
+  # Used to resolve the PROXY SERVER hostnames (aliyun, the 911 nodes).
+  proxy-server-nameserver:
+    - https://dns.alidns.com/dns-query
+    - https://doh.pub/dns-query
+  nameserver:
+    - https://dns.alidns.com/dns-query
+    - https://doh.pub/dns-query
+  # Split by destination. Domestic names must never go to a foreign resolver
+  # (CDNs hand out region-wrong answers), and blocked names must never go to a
+  # domestic one (poisoned answers - hub.docker.com resolved to a Facebook IP
+  # while this was wrong).
+  nameserver-policy:
+    "geosite:cn":
+      - https://dns.alidns.com/dns-query
+      - https://doh.pub/dns-query
+    "geosite:geolocation-!cn":
+      - https://1.1.1.1/dns-query
+      - https://8.8.8.8/dns-query
+    # SQX (StrategyQuant X) pulls historical data from Dukascopy. These names are
+    # NOT in geolocation-!cn, so they used to fall through to the domestic
+    # resolvers above and came back POISONED: datafeed.dukascopy.com resolved to
+    # Facebook ranges (31.13.75.5 / 199.96.63.75 / 122.248.226.57) and every data
+    # download dialled those and timed out. Resolve them overseas; respect-rules
+    # sends the DoH queries through the proxy, so they cannot be poisoned either.
+    # NOTE (2026-10-18): keys here are domain-trie patterns. `+.example.com`
+    # covers the apex AND every subdomain; a bare `example.com` covers only the
+    # apex, and a `domain:` prefix is NOT stripped by mihomo 1.19 - it becomes a
+    # literal label and matches nothing. Measured while routing ic.com:
+    # `domain:ic.com` left the name on the domestic resolvers (poisoned), a bare
+    # `ic.com` fixed only the apex, and `+.ic.com` fixed apex and subdomains.
+    "+.dukascopy.com":
+      - https://1.1.1.1/dns-query
+      - https://8.8.8.8/dns-query
+    # TradingView (owner, 2026-10-11: "rule trading view to proxy"). The NAME is
+    # poisoned here, not just the route: measured 2026-10-11 20:2x-20:3x, the local
+    # resolver and AliDNS answered facebook/CDN ranges for the whole family and gave
+    # a DIFFERENT address on every query (www.tradingview.com -> 184.173.136.86,
+    # then 199.59.149.206, then 173.252.108.3; data -> 199.59.148.229, then
+    # 172.241.217.187), so no hosts pin can fix it the way the SQX/Dukascopy pin
+    # does - there is no stable address to pin. Resolve it overseas instead, which
+    # is the same cure the dukascopy.com entry above applies, and the routing rule
+    # in the rules block sends the connection itself through AUTO. respect-rules
+    # already routes 1.1.1.1/8.8.8.8 through the proxy (their IP-CIDR,AUTO rules),
+    # so these lookups cannot be poisoned either.
+    "+.tradingview.com":
+      - https://1.1.1.1/dns-query
+      - https://8.8.8.8/dns-query
+    # CookieYes (owner, 2026-10-12, while routing platform.worldquantbrain.com): the consent script
+    # that page loads BLOCKING in its <head>. Measured 2026-10-12 07:5x: the local resolver answers
+    # 141.193.154.50 for cdn-cookieyes.com while AliDNS and Cloudflare both answer Cloudflare's own
+    # 104.18.18.62 / 104.18.19.62 - the same bogus 141.193.154.x address the US-visa portal got
+    # poisoned with, which is why the name resolved "successfully" and then did not answer. Resolve
+    # it overseas with the routing rule in the rules block.
+    "+.cdn-cookieyes.com":
+      - https://1.1.1.1/dns-query
+      - https://8.8.8.8/dns-query
+    # IC Markets (owner, 2026-10-18: "visit https://www.ic.com/en/"). Same pair as
+    # TradingView. Measured 2026-10-18 19:0x: the local resolver answered the
+    # Facebook anycast pair 69.63.190.26 / 2a03:2880:f11a:83:face:b00c:0:25de for
+    # www.ic.com, while Cloudflare DoH gives CloudFront 65.9.180.4/.34/.112/.119
+    # (apex on 52.85.151.x). A direct dial to the real address is RESET at the TLS
+    # handshake, while the same URL answered 200 in 1.8 s through the LA tunnel -
+    # so this needs both halves: resolve overseas here, route through AUTO below.
+    "+.ic.com":
+      - https://1.1.1.1/dns-query
+      - https://8.8.8.8/dns-query
+
+# ------------------------ Proxy providers ---------------------
+# 911 subscription, refreshed daily. mihomo reads the node list + auto-updates.
+#
+# The paid nodes are dialled by mihomo, so the renewed design hands them to the
+# HypoMux dialer too (`override: dialer-proxy: hypomux` below): every proxied
+# dial is NIC-dispatched. Measured: anytls opens one TCP connection per stream
+# (42 sockets observed for 6 concurrent requests), so these are genuinely
+# independent connections - exactly what HypoMux can spread.
+# Verified at runtime by the switch, 2026-10-11: before it, mihomo held 96 sockets
+# to the 911 entry host (ctat01.node01234.us = 112.91.92.129) because the provider
+# was NIC-pinned here by `interface-name: 以太网`; after it, hypomux-engine held 95
+# (77 via 10.90.126.33, 18 via 192.168.1.100) and mihomo 0. The switch also runs
+# this as its acceptance test, because `mihomo -t` does NOT validate a
+# provider-level `dialer-proxy` (a bogus one still exits 0).
+#
+# Resilience, and the price of one owner per job: HypoMux is now in the path of
+# EVERY proxied dial, so a HypoMux outage stops proxying. What still works is
+# plain DIRECT traffic, and DATA - it leads with aliyun-la, the SSH tunnel, which
+# is the one exit not dialled through HypoMux.
+proxy-providers:
+  clashmi:
+    type: http
+    url: "https://REPLACE-ME.invalid/sub/__SUBSCRIPTION_TOKEN__"   # REPLACE: subscription URL + token
+    interval: 86400
+    path: ./providers/clashmi.yaml
+    header:
+      User-Agent:
+        - "clash-verge/v2.0"
+
+# ---------------------------------------------------------------------------
+# Auto-learned rule sets, written by src/proxy/Update-AutoLearnRules.ps1
+#
+# WHY: a `fallback` group chooses an outbound from periodic health checks, not
+# from per-connection outcomes. When the free Aliyun proxy passes its health
+# check but times out against one specific site, that site stays broken forever
+# (184 such failures observed for query2.finance.yahoo.com). These rule sets let
+# the learner react to real failures instead.
+#
+# `interval: 0` disables mihomo's own re-fetch; the learner hot-reloads them via
+# PUT /providers/rules/<name>, which takes effect without dropping connections.
+# ---------------------------------------------------------------------------
+rule-providers:
+  # The 911 subscription's OWN must-proxy list, lifted out of its `rules:` block by
+  # tools\Update-Clashmi911Rules.ps1 into a classical payload (354 entries on
+  # 2026-10-11). Its DIRECT / CN / private entries and its MATCH,OpenConnectUs911
+  # tail are dropped on purpose: the catch-all here is MATCH,DISPATCH (owner,
+  # 2026-10-11), so only what a rule names is proxied. This file is runtime state
+  # (runtime\rules\, gitignored) - regenerate it with that tool, never by hand.
+  clashmi-911:
+    type: file
+    behavior: classical
+    path: ./rules/clashmi-911.yaml
+    interval: 0
+  autolearn-paid:
+    type: file
+    behavior: classical
+    path: ./rules/autolearn-paid.yaml
+    interval: 0
+  autolearn-direct:
+    type: file
+    behavior: classical
+    path: ./rules/autolearn-direct.yaml
+    interval: 0
+
+# --------------------------- Outbounds ------------------------
+proxies:
+  # (The `hypomux` SOCKS5 dialer outbound lived here until 2026-10-14 - retired
+  # by the egress-TUN revision: mihomo dials raw, HypoMux's TUN captures those
+  # sockets and spreads them across the NICs; GUI rule: process mihomo.exe ->
+  # 多网卡聚合.)
+
+  # PRIMARY free proxy - native shadowsocks on the Aliyun box.
+  #
+  # Replaces the old ssh -D tunnel: mihomo owns the socket, one TCP connection
+  # per stream (not multiplexed), no TCP-in-TCP penalty, server runs BBR - and one
+  # socket per stream is exactly what HypoMux can spread.
+  #
+  # TRAPS kept from the previous design, because they outlive it:
+  #   - HypoMux source-binds its outbound sockets to a NIC, and a NIC-bound socket
+  #     cannot reach 127.0.0.1. That is why only mihomo - whose dialer socket is
+  #     NOT NIC-bound - talks to it, at 127.0.0.1:10800, and why HypoMux's own DNS
+  #     has to stay off loopback.
+  #   - that same source-binding forced SmartDNS to bind literal NIC addresses,
+  #     which made SmartDNS PANIC (os error 10049) and take the whole machine's
+  #     DNS down when a NIC lost its lease - the reason SmartDNS is gone.
+  #   - a dead NIC in an adapter pool failed ~half of all requests, and the symptom
+  #     (intermittent timeouts) looked like a flaky uplink.
+  #   - it consumes WFP hooks alongside mihomo's.
+  #   - a multiplexed tunnel gives it nothing to spread: one TCP connection is one
+  #     dial. Hence native ss with one socket per stream, not `ssh -D`.
+  #
+  # The renewal answers the old "if NIC distribution is wanted again" question the
+  # other way round: HypoMux distributes (it measures the adapters and reweights
+  # them - `interface-name` cannot), mihomo only chooses the upstream. One owner
+  # per job: docs\HYPOMUX-DISTRIBUTION.md.
+  # 2026-10-16 late: redefined ss(65280) -> omrin vless. The SS2022 ss-go
+  # service on BOTH Aliyun boxes is dead (invalid protocol string in
+  # /etc/shadowsocks-go/server.json, crash-looping for hours), and the 65101
+  # libev is ACL-locked to the OMR VM's WAN IPs, so no ss dial from this PC can
+  # work. VLESS 65228 is the LA box's omrin inbound (TLS, no source ACL; the
+  # same endpoint family as Tokyo's `aliyun-tokyo` below). The UUID is redacted
+  # here - the live runtime\config.yaml carries it (gitignored, like the keys).
+  - name: aliyun-native
+    type: vless
+    server: 192.0.2.10
+    port: 65228
+    uuid: "REPLACE-LA-OMRIN-UUID"
+    network: tcp
+    tls: true
+    skip-cert-verify: true
+    udp: true
+
+  # OMR path (2026-10-15): a shadowsocks listener on the OpenMPTCProuter VM whose
+  # egress rides OMR's own ss/mqvpn chain to the Aliyun exit. The link runs over
+  # the VMnet8 segment's IPv6 link-local pair - fe80::/10 is one of the HypoMux
+  # capture's exclusion gaps, so the hop bypasses the NIC dispatch (IPv4 to the
+  # VM's own subnets is captured and re-dispatched, which those destinations
+  # cannot survive). mihomo cannot dial a scoped link-local literal itself, so
+  # tools\omr-tunnel.ps1 (a loopback relay on 65080, started hidden) performs
+  # the scoped dial and this outbound uses that relay (TCP and UDP). Primary member
+  # of LINGODA; the VM-side setup (extra ss-server on
+  # :65080, resolver fix) is recorded in the OMR test workspace.
+  - name: omr
+    type: ss
+    server: 127.0.0.1
+    port: 65080
+    cipher: chacha20-ietf-poly1305
+    password: "REPLACE-OMR-SS-PASSWORD"   # REPLACE: ss password of the VM listener
+    udp: true
+
+  # hysteria2 on the same box, hand-written now (this used to be generated per NIC).
+  # In HYPOMUX-PATH it can never win: hysteria2 is QUIC/UDP and cannot traverse
+  # HypoMux's TCP SOCKS hop. Measured and recorded, not assumed:
+  #   "aliyun-native 522 ms, hy2-upstream FAILED" (docs\HYPOMUX-DISTRIBUTION.md)
+  # Kept as the standing probe of that fact, so the group stays honest about it.
+  - name: hy2-upstream
+    type: hysteria2
+    server: 192.0.2.10
+    port: 443
+    password: "__HY2_PASSWORD__"   # REPLACE: hysteria2 password (see config\hysteria2.json)
+    sni: bing.com
+    skip-cert-verify: true
+    # Brutal congestion control targets. The client link is the
+    # constraint, so these are set to what the link actually does.
+    up: "50 Mbps"
+    down: "50 Mbps"
+
+  # The original SSH SOCKS tunnel. It is NOT dialled through HypoMux, which is now
+  # its whole value: the independent free exit (DATA leads with it, and PROXY can
+  # select it by hand). Kept up by the AliyunTunnel task.
+  - name: aliyun-la
+    type: socks5
+    server: 127.0.0.1
+    port: 1080                   # SSH tunnel -> Aliyun Los Angeles
+    udp: false                   # ssh -D does not carry UDP
+
+  # Tokyo box's own omrin vless (added 2026-10-16 night). Same v2ray inbound
+  # family as the LA box: TLS (cert CN=server, skip-cert-verify), no source
+  # ACL; dials leave raw and are TUN-captured by HypoMux. Last member of the
+  # CHATGPT group - the measured-fast fallback when every US exit fails. The
+  # UUID is redacted here; the live runtime\config.yaml carries it.
+  - name: aliyun-tokyo
+    type: vless
+    server: 192.0.2.11
+    port: 65228
+    uuid: "REPLACE-TOKYO-OMRIN-UUID"
+    network: tcp
+    tls: true
+    skip-cert-verify: true
+    udp: true
+
+  # ==== GENERATED:PROXIES BEGIN ====
+  # LEGACY RING REGION - retired for real on 2026-10-11 (the switch emptied this
+  # body, and the live file now holds this note and nothing else here).
+  # The adapter watcher used to write one outbound per adapter per transport here
+  # (aliyun-nic*/hy2-nic*, each with `interface-name: 以太网` / `以太网 2`), which is
+  # how mihomo used to own NIC distribution. HypoMux owns it now: mihomo holds no
+  # per-NIC outbounds under this design, the watcher no longer writes this region
+  # (task Disabled, no process), and nothing may be added back here. The markers
+  # stay because the live file and CI both key on them - and the switch rewrites
+  # them byte-identically. Record: docs\HYPOMUX-DISTRIBUTION.md.
+
+# ==== GENERATED:PROXIES END ====
+
+proxy-groups:
+  # ===== 911-FIRST 4:1: four paid exits lead, the free Aliyun path takes 1 in 5 =====
+  # `fallback` (not `url-test`) throughout: mihomo walks the list in order and uses
+  # the first member that passes its health check. The free path is unlimited, so
+  # ClashMi nodes are only touched when it is actually down.
+  #
+  # Do NOT change these to url-test: that picks whichever is fastest, which would
+  # silently spend your 50GB subscription on every YouTube video.
+
+  # HYPOMUX-PATH - which UPSTREAM, not which NIC: that is policy, and policy is
+  # mihomo's job. Both members dial through `hypomux`, so the adapter stays
+  # HypoMux's call. hy2-upstream can never win - hysteria2 is QUIC/UDP and cannot
+  # traverse HypoMux's TCP SOCKS hop (measured: "aliyun-native 522 ms,
+  # hy2-upstream FAILED") - so this resolves to aliyun-native, the path HypoMux
+  # actually spreads. The catch-all is MATCH,DISPATCH (owner, 2026-10-11), so this
+  # group - not MATCH - is what serves every domain a rule sends to AUTO.
+  - name: HYPOMUX-PATH
+    type: fallback
+    proxies:
+      # NOTE: hy2-upstream is deliberately NOT a member (removed 2026-10-11) - it can never
+      # pass a check through the HypoMux hop, and as the first member of a fallback it only
+      # made the group report unhealthy, which then silently emptied the free share of any
+      # group referencing it. Kept in BENCH as an A/B target.
+      - aliyun-native
+
+  # AUTO is the PROXY PATH, and since 2026-10-11 it is a 4:1 MIX (owner: "for proxy, we
+  # can use our 911 connect first and then use the aliyun server proxy (4:1), all through
+  # hypomux dispatch").
+  #
+  #   * four 911 exits lead, with 香港|HK2022|AT - the owner's main 911 node and the
+  #     fastest of the 49 measured (80 ms) - among them;
+  #   * `aliyun-native` (shadowsocks to the Aliyun server) is the "1" share, so one
+  #     connection in five rides Aliyun instead of the metered plan;
+  #   * every member dials through `hypomux`, so HypoMux still chooses the adapter.
+  #
+  # `load-balance` + `round-robin`, NOT consistent-hashing: hashing pins a destination to
+  # ONE member, so a flaky node becomes repeated failures for that destination, while
+  # round-robin spreads connections and a retry lands on a different exit. The ratio is
+  # by member count (4 of 5) - the only weighting mihomo groups offer. The four are
+  # chosen with `filter`, not by listing names in `proxies`: a name that disappears from
+  # the subscription would make the whole config invalid.
+  #
+  # The Aliyun member is `aliyun-native`, NOT `HYPOMUX-PATH`, and that is a measurement:
+  # HYPOMUX-PATH = fallback [hy2-upstream, aliyun-native], hy2-upstream can never pass a
+  # check through HypoMux (hysteria2 is QUIC, the hop is TCP SOCKS), so the group reports
+  # itself unhealthy - and a load-balance skips unhealthy members, which is how the first
+  # version of this mix sent 10 of 10 test connections to the paid nodes with a silent
+  # 0-in-5 Aliyun share. Measured: aliyun-native 366 ms alive, hy2-upstream failed.
+  #
+  # HISTORY, kept: AUTO used to be a `fallback` leading with HYPOMUX-PATH - free-first,
+  # metered plan as last resort - and its interval was dropped 120 s -> 60 s because a
+  # reload left the free group unhealthy for a moment. The owner reversed the priority;
+  # the interval lesson survives. Quota note: 4 of 5 proxied connections now spend the
+  # metered 911 plan.
+  - name: AUTO
+    type: load-balance
+    strategy: round-robin
+    url: https://www.google.com/generate_204
+    expected-status: 204
+    interval: 60
+    timeout: 5000
+    lazy: false
+    filter: '(香港\|HK2022\|AT|台湾\|TW2035\|AT|新加坡\|SG2034\|AT|马来西亚\|MY2032\|AT)'
+    proxies:
+      - aliyun-native
+    use:
+      - clashmi
+  # ==== GENERATED:AUTO BEGIN ====
+  # LEGACY RING REGION - retired for real on 2026-10-11: the watcher generated HY2LB
+  # (a per-NIC hysteria2 ring) and the AUTO that led with it here. It no longer
+  # writes this region (the switch rewrote AUTO, above, and emptied this body),
+  # nothing may be added back (a rewrite would inject a second AUTO), and the
+  # markers stay because the live file and CI both key on them.
+  # ==== GENERATED:AUTO END ====
+
+  # STORE - the Microsoft Store's SERVICE calls (owner, 2026-10-14 evening: "how about
+  # microsoft store"). The routes were right; the EXITS were not: during the evening
+  # congestion AUTO's round-robin kept picking members that were DEAD for the Store's
+  # own URL - measured with the controller, 2 of 5 members timed out on
+  # `storeedge.microsoft.com/v9.0/pages/home` while the live ones answered ~2 s - and
+  # the Store's 4-retry loop still lost attempts to them (its event log: 0x80072EFD
+  # burst 16:25-16:26 on pages/home, entitlements, products and the Digital Attachment
+  # feed). This group url-tests that exact first-paint URL every 60 s and only ever
+  # dials a member that PASSED, so a dead 911 node cannot receive traffic while the
+  # others are healthy. Small JSON calls only - the BULK delivery families stay on
+  # AUTO below. `filter`, never fixed names - same rename trap as AUTO (a name that
+  # vanishes from the subscription must not invalidate the file).
+  # Members (MEASURED 2026-10-14 17:0x, the three endpoints the Store blocks on):
+  #   aliyun-la      pages/home 269 ms - storeedgefd 272 ms - displaycatalog 314 ms (free)
+  #   aliyun-native  pages/home 230 ms - storeedgefd 250 ms - displaycatalog 254 ms (free)
+  #   the 911 exits  110-479 ms when healthy, but they flap to 2 s / timeouts in the
+  #                  evening congestion - which is the failure this group exists to dodge.
+  # So both Aliyun tunnels ride first-class and the four 911 exits stay as the backup;
+  # a 30 s interval re-picks fast enough that a stalled member cannot hold traffic.
+  - name: STORE
+    type: url-test
+    url: "https://storeedge.microsoft.com/v9.0/pages/home?market=CN&locale=zh-Hans-CN"
+    expected-status: 200
+    interval: 30
+    timeout: 5000
+    lazy: false
+    proxies:
+      - aliyun-la
+      - aliyun-native
+    filter: '(香港\|HK2022\|AT|新加坡\|SG2034\|AT|台湾\|TW2035\|AT|马来西亚\|MY2032\|AT)'
+    use:
+      - clashmi
+
+  # REALTIME PIN - the Lingoda classroom (owner, 2026-10-14: "help me to speedup
+  # lingoda"). The learner had already picked the family up from the direct path's
+  # failures and parked it in autolearn-direct (355 log hits during a real class
+  # window, 2026-10-13 15:50-16:15) - but that bucket rides the 4:1 AUTO
+  # round-robin, and a live-class channel must not change exit between reconnects.
+  # Measured 2026-10-14 05:5x with the controller's URLTest against the classroom's
+  # own endpoints (full table: state\lingoda-latency-20261014.txt): on the realtime
+  # websocket (presentation.lingoda.com) the AUTO mix's own members span HK 111 ms
+  # to MY 806 ms, and the free Aliyun share times out; on the CloudFront front
+  # (class.lingoda.com) SG answers 288 ms and HK 328 ms. So the family is pinned
+  # to ONE measured exit with two measured backups - `fallback` keeps the first
+  # member that passes the health check, so a dead HK fails over to SG (then TW)
+  # without a policy change:
+  #   香港|HK2022|AT     wss 111 ms / front 328 ms  <- primary
+  #   新加坡|SG2034|AT   wss 131 ms / front 288 ms
+  #   台湾|TW2035|AT     wss 161 ms / front 392 ms
+  # The health check is the classroom's own endpoint: presentation.lingoda.com is
+  # websocket-only, and 426 Upgrade Required IS its healthy answer (hence
+  # expected-status). `filter`, never fixed member names - same rename trap as
+  # AUTO above: a name that vanishes from the subscription must not invalidate
+  # the whole file.
+  # 2026-10-16 UPDATE: omr primaries the class again (owner's call): the outer
+  # fallback lists omr first, then the nested LINGODA-HK (url-test over the HK
+  # nodes, ~102 ms on the classroom URL) as the first backup, then SG/TW. A
+  # single url-test group flapped on probe noise, so the deterministic nested
+  # form stays. The 2026-10-14 rationale below is kept as history.
+  - name: LINGODA-HK
+    type: url-test
+    url: https://presentation.lingoda.com/
+    expected-status: 426
+    interval: 60
+    timeout: 5000
+    lazy: false
+    use:
+      - clashmi
+    filter: '(香港\|HK2022\|AT)'
+
+  - name: LINGODA
+    type: fallback
+    url: https://presentation.lingoda.com/
+    expected-status: 426
+    interval: 60
+    timeout: 5000
+    lazy: false
+    proxies:
+      - omr          # OMR first (owner, 2026-10-16): the class rides the VM OMR
+      - LINGODA-HK   # measured HK backup (~102 ms) - the zero-OMR fallback
+    use:
+      - clashmi
+    filter: '(新加坡\|SG2034\|AT|台湾\|TW2035\|AT)'
+
+  # CHATGPT - US egress (owner, 2026-10-16: "use us proxy or aliyun silicon valley
+  # proxy for chatgpt.com" + "for https://chatgpt.com/codex/pricing/ proxy").
+  # The 2026-10-13 AUTO pin fixed the exit CHURN (the paid ring opened every
+  # connection from a random country) but not the exits themselves. Measured
+  # 2026-10-16 15:4x-15:5x with the controller's own URLTest, twice each:
+  #   aliyun-la       770 / 786 ms on /codex/pricing/ - the only exit that serves
+  #                   it. The SSH tunnel exits the Aliyun US box
+  #                   (192.0.2.10, Los Angeles - the "silicon valley" box).
+  #   aliyun-native   503, 2/2 - the ss path to the SAME box cannot serve
+  #                   ChatGPT right now; the health check keeps it out while so.
+  #   omr             1058 ms - the VM OMR transport to the SAME box, slower but
+  #                   healthy; kept as the second free fallback (shares the box,
+  #                   so it survives an ssh-tunnel or ss-port failure).
+  #   美国|US2001|AT   404, 2/2 (香港|HK2022|AT too) - the 911 exits currently
+  #                   cannot serve this page at all, which is why the AUTO mix
+  #                   was flaky for ChatGPT in the first place.
+  # So: fallback (first member that PASSES the check, checked against chatgpt.com
+  # itself, 60 s) with the free Aliyun paths first - cost-safe and deterministic -
+  # and the US 911 node as the only paid member, addressed by `filter` so a
+  # subscription rename cannot break the file (same rule as AUTO/STORE above).
+  # 2026-10-16 night (owner: "proxy https://auth.openai.com/choose-an-account to
+  # us or tokyo"): auth.openai.com - the login + account chooser the whole
+  # ChatGPT/Codex sign-in walks through - was still on AUTO. Measured through the
+  # mix: one attempt 403 (Cloudflare) in 1.9 s, another hung past 6 s, exit
+  # country changing per connection. Delay-tested on that exact URL: aliyun-tokyo
+  # 388 ms (fastest) / aliyun-la 684 / aliyun-native 1146 / omr errored that
+  # minute (relay flap - it is the VM path to the LA box). So aliyun-tokyo joins
+  # as the LAST member - the US paths stay preferred exactly as pinned, Tokyo is
+  # the measured-fast fallback when they all fail - and auth.openai.com rides
+  # this group, so both halves of the login flow exit from ONE country.
+  # 2026-10-18 (owner: "try to speedup our codex connect"): re-measured the
+  # three real Codex endpoints through every member with the controller's
+  # URLTest - chatgpt.com omr 417 / aliyun-la 633 / aliyun-native 927 /
+  # aliyun-tokyo 381; auth.openai.com omr 576 / aliyun-la 672 /
+  # aliyun-native 831 / aliyun-tokyo error; api.openai.com aliyun-la 229 /
+  # omr 248 / aliyun-native 284 / aliyun-tokyo 273. omr leads now: best
+  # aggregate on the most stable path (the VM tunnel), and the whole OpenAI
+  # family still exits ONE country (Japan; the owner's "us or tokyo").
+  # aliyun-la stays second (US backup), Tokyo vless third, native last.
+  - name: CHATGPT
+    type: fallback
+    url: https://chatgpt.com/
+    expected-status: 200
+    interval: 60
+    timeout: 5000
+    lazy: false
+    proxies:
+      - omr
+      - aliyun-la
+      - aliyun-native
+      - aliyun-tokyo # direct omrin vless (65228) to the Tokyo box - US-fail fallback (2026-10-16 night)
+    use:
+      - clashmi
+    # Paid fallbacks widened 2026-10-18 (owner: "how about 911 connect? for
+    # chatgpt?"). Measured through the 911 exits: chatgpt.com JP 302 / HK 514 /
+    # US 1023; auth.openai.com HK 313 / US 527 / JP 771; api.openai.com JP 274 /
+    # US 463 / HK 509. Free omr still leads each group (chatgpt 417 / auth 576 /
+    # api 248, and it does not spend the 50 GB plan), so these stay last-resort
+    # members - the JP exit is the best of them for ChatGPT when free fails.
+    filter: '(美国\|US2001\|AT|日本\|JP2021\|AT|香港\|HK2022\|AT)'
+
+  # DEV - developer hosts the raw path can't carry right now (owner,
+  # 2026-10-17: "QuantConnect and crates.io requests still fail with TLS EOF
+  # ... direct access also times out" + "can you try visit quantconnect using
+  # tokyo server proxy?"). Neither family had a rule, so both rode the DIRECT
+  # catch-all - the path that dies first under morning throttling. Measured
+  # 2026-10-17 08:3x through the free exits: crates.io omr 95 ms / aliyun-la
+  # 204 ms (aliyun-native timed out); quantconnect.com omr 343 ms / aliyun-la
+  # 356 ms, and a real fetch via the Tokyo tunnel answered 200 in 2.0 s
+  # (from the Tokyo VPS itself: 200 in 1.3 s). omr first - the VM tunnel to
+  # Tokyo rode the whole morning out; the LA ssh tunnel is the free backup;
+  # the HK node is the last resort. Health-checked on quantconnect.com (a
+  # bare crates.io request 403s some UAs, which would false-fail the check).
+  - name: DEV
+    type: fallback
+    url: https://www.quantconnect.com/
+    expected-status: 200
+    interval: 60
+    timeout: 5000
+    lazy: false
+    proxies:
+      - omr
+      - aliyun-la
+      - LINGODA-HK
+
+  # Manual switch. Set to `aliyun-la` to hard-guarantee zero quota use,
+  # or pick a specific ClashMi node when you want max speed.
+  #
+  # TRAP kept from the previous design: DIRECT-LB - a round-robin ring of the
+  # per-adapter `direct-nic*` outbounds - lived here, and LOCAL selected it. Its
+  # members were GENERATED, so they disappeared when an adapter went down and a
+  # rule pointing at them could make the whole config invalid on a single-NIC
+  # machine; a NIC-bound socket also cannot reach 127.0.0.1, which is where
+  # HypoMux and the SSH tunnel live. Retired with the rings: mihomo holds no
+  # adapter rings, and LOCAL is a `select [DISPATCH, DIRECT]` again (it dispatches too).
+  #
+  # SQX / Dukascopy bulk data. A separate hand-written group on purpose: its
+  # members are hand-written and always exist, unlike the GENERATED per-NIC
+  # outbounds above. It also leads with the free SSH tunnel, which is not dialled
+  # through HypoMux and therefore survives a HypoMux outage.
+  #
+  # Why not AUTO: a fallback group resolves to ONE member for a whole health-check
+  # interval, so a flaky paid node shows up as SSL failures in SQX (its log:
+  # "SSL peer shut down incorrectly"). DATA is hand-written, so its exit can be
+  # pinned by hand, and it health-checks the real Dukascopy URL, not a 204 page.
+  # TRIED AND REVERTED 2026-10-11 17:3x, kept here so the next reader does not repeat it. The
+  # owner's downloader log shows the feed failing with `Error code: 429` - a rate limit, not
+  # bandwidth - clustered on some symbols while others succeed. Two route changes were tried:
+  #   * this ring widened from 4 exits to 12 (more source IPs for a per-IP limit): 12 exits 0/16
+  #     succeeded, 4 exits 8/16 - no benefit, possibly worse. Reverted.
+  #   * one stable exit instead of the ring: 4/12 against 6/12. Reverted.
+  # And serial probes at 17:26 returned 2/4 with the server answering 503 to half - Dukascopy
+  # refuses even single requests, so the refusals are server-side and no routing choice moves them.
+  # The ring stays at four because it is the measured-best of the three shapes, not because it is good.
+  - name: DATA
+    type: load-balance
+    strategy: round-robin
+    url: https://datafeed.dukascopy.com/datafeed/EURUSD/2024/00/02/08h_ticks.bi5
+    interval: 600
+    timeout: 12000
+    lazy: false
+    # Steady PAID exits (filter, not hard-coded names: the tags carry version
+    # suffixes), health-checked on the real Dukascopy URL rather than a 204 page.
+    use:
+      - clashmi
+    # A FEW stable exits, not one and not 49: a single IP hits Dukascopy's per-IP
+    # 429, while 49 rotating IPs look like abuse and get their TLS handshakes
+    # terminated (SQX logged 1,138 of those). Several steady exits split the load
+    # while each keeps one identity.
+    # NOT the 4:1 mix and NOT the Aliyun pair that used to be listed here: bulk
+    # downloads want a few steady exits, and the free paths are the ones Dukascopy
+    # blocks (owner, 2026-10-11: "give sqx datadownload all from proxy").
+    filter: "香港|新加坡|日本|德国"
+
+  - name: PROXY
+    type: select
+    proxies:
+      - AUTO
+      - aliyun-la
+      - DIRECT
+    use:
+      - clashmi
+
+  # PAID - the 911 nodes only, never the free Aliyun paths.
+  #
+  # Target of RULE-SET,autolearn-paid. A destination lands here when the free
+  # proxy chain demonstrably cannot reach it (sustained failures in mihomo's
+  # log), so paying quota is the only way to make it work. Deliberately excludes
+  # aliyun-native/aliyun-la: retrying the thing that already failed would just
+  # loop.
+  #
+  # Kept small on purpose - the learner caps this set (see -MaxPerRoute).
+  - name: PAID
+    type: load-balance
+    strategy: round-robin
+    url: https://www.google.com/generate_204
+    expected-status: 204
+    interval: 120
+    timeout: 5000
+    lazy: false
+    use:
+      - clashmi
+
+  # BENCH - the benchmark selector. Present in the LIVE config (the switch keeps it,
+  # and repairs its members on every run to the three names that carry a real
+  # transport here). It is a manual A/B knob: put a rule on it, or pick a member by
+  # hand, and never a removed per-NIC name.
+  - name: BENCH
+    type: select
+    proxies:
+      - aliyun-native
+      - hy2-upstream
+      - aliyun-la
+
+  # DISPATCH - every non-proxied connection is handed to HypoMux too (owner,
+  # 2026-10-11). The HypoMux SOCKS5 listener used as a plain dialer: mihomo names the
+  # destination, HypoMux opens the socket from the adapter it picks. Measured through
+  # it: gstatic 204 / example.com 200 / microsoft.com 200 / deepseek 401, sockets
+  # leaving by BOTH NICs (40 via 10.90.126.33, 9 via 192.168.1.100), no measurable
+  # latency cost (0.204 s vs 0.221 s for baidu), and 6/6 retries clean.
+  # `fallback [hypomux, DIRECT]`: HypoMux is now a hop for everything, so if its
+  # engine stops the machine must not lose the internet - this degrades to the OS
+  # route instead. Proxied traffic still fails in that case (same engine).
+  # NOT for loopback or the private ranges: a NIC-bound socket cannot reach
+  # 127.0.0.1, which is where HypoMux and the SSH tunnel live.
+  # interval 30 + lazy: false (measured 2026-10-11): with dead CONTENT hosts triggering the
+  # group's health check, a lazy: true fallback stayed parked on its DIRECT member even while
+  # hypomux was alive and faster (39 ms vs 47 ms) - i.e. dispatch silently off. Steady checking
+  # re-selects within half a minute.
+  - name: DISPATCH
+    type: fallback
+    url: https://www.baidu.com
+    expected-status: 200
+    interval: 30
+    timeout: 5000
+    lazy: false
+    proxies:
+      - DIRECT
+  # Local path - traffic that must NOT be proxied: DOMAIN-SUFFIX,cn and the rest
+  # of the explicit DIRECT rules below. MATCH is HYPOMUX-PATH now, so nothing
+  # reaches this group except an explicit LOCAL rule.
+  #
+  # `select` rather than a bare MATCH so there is a place to force an exit
+  # by hand when diagnosing.
+  #
+  # LEGACY, reframed: HypoMux used to sit here too, so that even non-proxied
+  # traffic was spread across NICs. The renewed design puts HypoMux only in the
+  # path of PROXIED dials (docs\HYPOMUX-DISTRIBUTION.md), and the ring this group
+  # selected (DIRECT-LB -> direct-nic5/direct-nic50) is retired.
+  #
+  # TRAP: a NIC-bound socket cannot reach 127.0.0.1, and mihomo reaches HypoMux at
+  # 127.0.0.1:10800 - which is why the loop-protection rules below send 127/8,
+  # 10/8, 172.16/12 and 192.168/16 to plain DIRECT, and why nothing NIC-bound
+  # belongs in this group.
+  - name: LOCAL
+    type: select
+    proxies:
+      - DISPATCH
+      - DIRECT
+  # ==== GENERATED:LOCAL BEGIN ====
+  # LEGACY RING REGION - retired for real on 2026-10-11: the watcher generated
+  # `LOCAL` here, selecting DIRECT-LB and the per-NIC outbounds. It no longer writes
+  # this region (the switch moved `LOCAL` out, above, and emptied this body),
+  # nothing may be added back, and the markers stay because the live file and CI
+  # both key on them.
+  # ==== GENERATED:LOCAL END ====
+# ---------------------------- Rules ---------------------------
+# Since 2026-10-11 the catch-all is MATCH,DISPATCH: only what a rule names is
+# proxied - our measured set, the 911 subscription's own must-proxy list
+# (RULE-SET,clashmi-911), the learner's escalations - and Microsoft Store /
+# Windows Update are pinned off the proxy ahead of everything. Everything else is
+# dispatched direct (DISPATCH -> HypoMux picks the NIC); only loopback and the
+# private / link-local ranges still follow the OS route. Before that the catch-all
+# was MATCH,DIRECT, and MATCH,HYPOMUX-PATH before that, so it proxied every
+# unmatched destination.
+# Basis: measured 2026-10-10 - see archive\smartdns\smartdns.conf section 5c/8.
+rules:
+
+  # ---------- Microsoft Store + Windows Update: DIRECT (owner, 2026-10-11) ----------
+  # Measured 2026-10-10: the Store downloads from a domestic CDN at ~17.8 MB/s, so
+  # proxying it spends quota to go slower. These sit ABOVE the auto-learner and
+  # above the 911 rule set on purpose (first match wins): a learned "direct failed"
+  # entry - the learner had picked up windows.com and msftncsi.com - or the 911 list
+  # (it carries DOMAIN-SUFFIX,windows.com) must not drag Store/Update back onto the
+  # proxy. The learner's explicit-rule guard reports hand-written rules for review
+  # instead of overriding them, so this stays put.
+  # `copilot.microsoft.com` is the one Microsoft host the 911 list wants proxied, so
+  # it is excepted first - deliberate, not an oversight.
+  # Verified: displaycatalog.mp.microsoft.com and download.windowsupdate.com ->
+  # `match DomainSuffix(microsoft.com|windowsupdate.com) using DIRECT`.
+  - DOMAIN,copilot.microsoft.com,AUTO
+  # ---------- the Store's SERVICE hosts: AUTO (measured 2026-10-12 06:2x-06:4x) ----------
+  # Owner, 2026-10-12: "i still cant open microsoft store, recheck the network for this". Two
+  # faults were measured, and this block is the first.
+  #
+  # The Store's own event log (Microsoft-Windows-Store/Operational) named the failing calls, and
+  # every one of them is either un-routed or on the DISPATCH path:
+  #   storeedge.microsoft.com       -> 0x80072EFD (never reached mihomo at all: NOT in ANY rule,
+  #                                    so it went direct, and direct is blocked here)
+  #   da.xboxservices.com           -> 0x80072EFD through DISPATCH (0 dial failures logged for the
+  #                                    STORE, but this rule set's problem is different - see below)
+  #   storeedgefd.dsx.mp.microsoft.com / collections.mp.microsoft.com / displaycatalog.mp.microsoft.com
+  #                                 -> already AUTO (the mp.microsoft.com pin), and still logging
+  #                                    `failed to create session: context deadline exceeded`
+  #   recent.svc.cloud.microsoft    -> `dial DISPATCH (match Match/) ... context deadline exceeded`
+  #   createcatalog.public.onecdn.static.microsoft -> same, `dial DISPATCH (match Match/)`
+  #
+  # Probed by hand, the SAME hosts answer on both paths (storeedge 404, svc.cloud 405, onecdn 400,
+  # displaycatalog 204, and storeedge's real API `/v9.0/pages/home?market=CN...` answered 200 in
+  # 0.15 s through the mix) - so the network is not the fault; the ROUTING of these families is.
+  # cloud.microsoft and onecdn.static.microsoft are the Store's modern service/CDN hosts and were
+  # covered by NO rule, i.e. they were falling through to MATCH,DISPATCH and dying there.
+  # `da.xboxservices.com` is the Digital Attachment feed the Store blocks its first paint on: it
+  # moves to AUTO with the rest of the service set, because DISPATCH is measurably unreliable for
+  # Microsoft's service hosts (graph.microsoft.com, officeclient.microsoft.com, substrate.office.com
+  # all logged `context deadline exceeded` on it) while the 4:1 mix carried the same calls.
+  # The BULK delivery rules below keep DISPATCH: that half rests on a real measurement (~17.8 MB/s
+  # from a domestic CDN) and is a different kind of traffic from these APIs.
+  #
+  # 2026-10-14 EVENING (owner: "how about microsoft store"): the routes were right and the exits
+  # were not - with one or two AUTO members dead for this URL, the Store's retries still fed them
+  # (0x80072EFD burst in its event log 16:25-16:26). The SERVICE hosts below now ride `STORE`,
+  # the url-test group that health-checks `/v9.0/pages/home` every 30 s and dials only members
+  # that passed; the BULK families keep their existing paths.
+  - DOMAIN-SUFFIX,svc.cloud.microsoft,STORE
+  - DOMAIN-SUFFIX,storeedge.microsoft.com,STORE
+  # NOTE: `xboxservices.com` is NOT re-declared here - the rule already in the Xbox block below
+  # was re-pointed from DISPATCH to AUTO for this measurement, because a second copy would be dead
+  # weight (first match wins) and the repo's own rule-integrity check rejects duplicates by name.
+  - DOMAIN-SUFFIX,onecdn.static.microsoft,STORE
+  # Live connection capture, 2026-10-12 07:2x: with the Store open, `/connections` showed exactly one
+  # Microsoft connection actually carrying bytes - `fd.api.iris.microsoft.com`, 3,971 bytes up,
+  # chained `hypomux>DISPATCH`. It is Microsoft's insights service and it is NOT a microsoft.com
+  # name, so no rule covered it: it was on the unreliable DISPATCH path like the rest of the
+  # Store's service calls. Small JSON API, nothing bulk rides it - AUTO with the others.
+  - DOMAIN-SUFFIX,iris.microsoft.com,STORE
+  # MEASURED 2026-10-11 20:1x: with everything under microsoft.com going DIRECT, the Store reported
+  # "initialization failed" and the dial log showed its OWN service endpoints failing:
+  #   array507.prod.do.dsp.mp.microsoft.com, collections.mp.microsoft.com, dl.delivery.mp.microsoft.com
+  # The direct rule was justified by a CDN throughput measurement and that part still holds - the
+  # delivery/asset families below keep going direct. The SERVICE endpoints the client must reach to
+  # initialise at all go to the 4:1 mix. They sit ABOVE DOMAIN-SUFFIX,microsoft.com: first match wins.
+  # mp.microsoft.com is a PARENT of the two families named here - adding them as separate
+  # rules made them dead weight (a first-match engine never reached them), which the repo's own
+  # rule-integrity check caught. One rule covers displaycatalog, collections, storeedgefd, dsx,
+  # array*/disc*/kv*.prod.do.dsp and dl/tlu.delivery.
+  - DOMAIN,displaycatalog.mp.microsoft.com,STORE     # the catalog API the first paint waits on
+  - DOMAIN,collections.mp.microsoft.com,STORE        # collections API (same first-paint block)
+  - DOMAIN-SUFFIX,dsx.mp.microsoft.com,STORE         # store edge front door (covers storeedgefd.dsx)
+  - DOMAIN-REGEX,^.+\.prod\.do\.dsp\.mp\.microsoft\.com$,STORE  # array*/disc*/kv*/cp*/geo* service farms
+  - DOMAIN-SUFFIX,mp.microsoft.com,AUTO              # parent: the delivery families + leftovers stay in the mix
+  - DOMAIN-SUFFIX,events.data.microsoft.com,STORE    # the telemetry the client waits on
+  - DOMAIN-SUFFIX,storequality.microsoft.com,STORE   # catalog revocation
+  - DOMAIN-SUFFIX,store-images.s-microsoft.com,STORE # store artwork and metadata
+  - DOMAIN-SUFFIX,microsoft.com,DISPATCH
+  - DOMAIN-SUFFIX,windowsupdate.com,DISPATCH
+  - DOMAIN-SUFFIX,windows.com,DISPATCH
+  - DOMAIN-SUFFIX,msftconnecttest.com,DISPATCH
+  - DOMAIN-SUFFIX,msftncsi.com,DISPATCH
+  - DOMAIN-SUFFIX,microsoftstore.com,DISPATCH
+  # MEASURED 2026-10-11 19:3x with the Store open: every Microsoft endpoint above matched and went
+  # DISPATCH (direct) - EXCEPT the Akamai-served Store assets, which are not subdomains of
+  # microsoft.com and were caught by the 911 provider list instead:
+  #   img-prod-cms-rt-microsoft-com.akamaized.net   RuleSet(clashmi-911) -> AUTO[新加坡|SG2034|AT]
+  # i.e. Store images and payloads rode a metered paid exit. Two things were needed:
+  #   * a REGEX, not DOMAIN-SUFFIX: mihomo matches suffixes on LABEL boundaries and this family carries
+  #     the name after a HYPHEN (`...rt-microsoft-com.akamaized.net`), so a suffix rule silently missed
+  #     it - measured, the host still matched the 911 list after that rule was added;
+  #   * process rules, because the owner's requirement is about the STORE, not about a host list: any
+  #     CDN it reaches for should go direct. Not `svchost.exe` (every service is a svchost).
+  - DOMAIN-REGEX,^[a-z0-9-]+-(microsoft-com|mscom)\.akamaized\.net$,DISPATCH
+  - DOMAIN-SUFFIX,s-microsoft.com,DISPATCH
+  # xboxservices.com was DISPATCH here, went AUTO on 2026-10-12, and rides STORE since 2026-10-14:
+  # the STORE blocks its first paint on `da.xboxservices.com` (DigitalAttachmentFD) - 0x80072EFD
+  # through DISPATCH on the day the Store's event log named it, and again on 2026-10-14 when AUTO
+  # happened to dial a member that was dead for the Store's endpoints. Everything on this suffix
+  # is a small API (that feed, `assets.xboxservices.com`) - no bulk rides it. Declared once, here,
+  # so the (type,value) pair stays unique - a duplicate is dead weight the rule-integrity check rejects.
+  - DOMAIN-SUFFIX,xboxservices.com,STORE
+  - PROCESS-NAME,WinStore.App,DISPATCH
+  - PROCESS-NAME,Microsoft.WindowsStore,DISPATCH
+  - PROCESS-NAME,AppInstaller,DISPATCH
+  - PROCESS-NAME,wsappx,DISPATCH
+  - PROCESS-NAME,DoSvc,DISPATCH            # Delivery Optimization
+  - PROCESS-NAME,MoUsoCoreWorker,DISPATCH  # Windows Update worker
+  - PROCESS-NAME,usoclient,DISPATCH
+  - PROCESS-NAME,wuauclt,DISPATCH
+  # Measured 2026-10-11 19:4x: every Xbox host below was ALREADY direct - but only through the
+  # catch-all `Match`, i.e. by luck of the provider list, which is exactly how the Store's Akamai
+  # assets ended up proxied. Made explicit, for the same reason the Store block exists:
+  #   xsts.auth / title.mgt / dlassets / images-eds-ssl / privacy / xbox-mbr / gssv .xboxlive.com
+  #   www.xbox.com, compass-ssl.xbox.com, assets.xboxservices.com
+  - DOMAIN-SUFFIX,xboxlive.com,DISPATCH
+  - DOMAIN-SUFFIX,xbox.com,DISPATCH
+  # Xbox processes, from the machine's own process list (Get-AppxPackage + Get-Process), so no CDN
+  # or host family can leak the Xbox app or the Game Bar onto a metered exit.
+  - PROCESS-NAME,GameBar,DISPATCH
+  - PROCESS-NAME,GameBarFTServer,DISPATCH
+  - PROCESS-NAME,GameBarPresenceWriter,DISPATCH
+  - PROCESS-NAME,XboxGameBarWidgets,DISPATCH
+  - PROCESS-NAME,XBox.TCUI,DISPATCH
+  - PROCESS-NAME,XboxIdp,DISPATCH
+  - PROCESS-NAME,XboxPcApp,DISPATCH
+  - PROCESS-NAME,XboxPcAppFT,DISPATCH
+  - PROCESS-NAME,StoreDesktopExtension,DISPATCH
+
+  # DeepSeek: raw DIRECT (owner, 2026-10-12: "can you set the deepseekapi rule to
+  # direct?"). DIRECT is the OS route, so these two rules leave HypoMux out of the
+  # path - with loop protection they are the only rules here that do not ride the
+  # DISPATCH hop. NOT LOCAL: LOCAL pulls a per-NIC ring, and DeepSeek through it
+  # failed intermittently (TLS handshake resets, measured 2026-10-11).
+  # They targeted DIRECT originally, rode DISPATCH from the third revision of
+  # 2026-10-11 until this change, and were in the live config but lost from this
+  # template when the dead duplicate LOCAL copies were removed (2026-10-11) -
+  # restored then so the template matches the live file, which the repo-hygiene
+  # ordering test checks.
+  - DOMAIN-SUFFIX,deepseek.com,DIRECT
+  - DOMAIN-KEYWORD,deepseek,DIRECT
+
+  # ---------- HNCloud portal: raw DIRECT (owner, 2026-10-14: "visit u.hncloud.com
+  # without proxy") ----------
+  # The whole hncloud.com family had been escalated by the learner into
+  # `autolearn-paid` (free-chain failures recorded earlier), so the browser rode
+  # the 49-node worldwide PAID ring: log 09:05-09:08 shows u./www.hncloud.com
+  # served by VN, LZ, UK, JED, IT and BEL exits inside three minutes, TTFB
+  # through that path 2.2-5.3 s. Raw direct answers in 0.28-0.51 s (301/200,
+  # measured 09:0x), and it keeps ONE source IP for a login session instead of
+  # bouncing across exits and adapters. So the family is pinned raw DIRECT -
+  # the second owner-ordered bypass of the dispatch hop (see DeepSeek above) -
+  # placed above the autolearn rule-sets where first match wins; the learner's
+  # safety rule #3 then leaves it alone, and its stale autolearn-paid entry
+  # stops being refreshed and ages out under the 30-day TTL meanwhile.
+  - DOMAIN-SUFFIX,hncloud.com,DIRECT
+
+  # ---------- Tencent Cloud console: raw DIRECT (owner, 2026-10-14: "visit
+  # cloud.tencent.com without proxy / update the rule") ----------
+  # It already resolved to the non-proxy family (tencent.com,LOCAL below), but
+  # the owner's order is a hard guarantee, and the hncloud lesson applies: any
+  # EdgeOne-fronted host that ever fails a health window can be escalated by
+  # the learner into a proxied bucket (hncloud.com ended up on the 49-node PAID
+  # ring at 2.2-5.3 s TTFB). Measured 09:4x: direct on the good uplink answers
+  # in 0.72-0.76 s TTFB (vs spiky 1.7-5.6 s on the other uplink - that
+  # spikiness is EdgeOne/POP-side, not a routing fault). Raw DIRECT also keeps
+  # one stable source IP for the console login session. Pin sits above the
+  # autolearn rule-sets; the learner's safety rule #3 leaves it alone.
+  - DOMAIN-SUFFIX,cloud.tencent.com,DIRECT
+
+  # ---------- Taobao / Tmall / JD / Aliyun: raw DIRECT (owner, 2026-10-16:
+  # "do not use proxy for https://www.taobao.com/ and jd.com", then "do not proxy
+  # common-buy.aliyun.com" and "do not proxy aliyun.tmall.com") ----------
+  # The two named families already resolved to the non-proxy block below
+  # (taobao.com / jd.com were LOCAL), but that block sits BELOW the autolearn
+  # rule-sets, and the learner had escalated sibling families into its proxy
+  # buckets, where first match beat the domestic rules:
+  #   alibaba-inc.com  the UMDC page telemetry every taobao.com page calls.
+  #                    Measured 12:39-12:42 mid-session: umdc./loscv.alibaba-inc.com
+  #                    rode AUTO (10 connections, exits TW/HK/MY). Probed 12:5x,
+  #                    same minute: DIRECT answers 404 in 0.28 s, the proxied
+  #                    path times out at 10 s - the learner had this backwards.
+  #   jddebug.com      JD's front-end telemetry, on the AUTO path since learned.
+  #                    The name does not resolve locally and timed out through
+  #                    the proxy too (probed 12:5x), so the pin takes it off the
+  #                    metered path; it fails fast instead of riding AUTO.
+  #   alipcsec.com     Alibaba's PC-security SDK host, learned into the direct
+  #                    bucket - any hit was riding AUTO (log 12:48). Same
+  #                    reasoning as jddebug.com: off the proxy, fail fast.
+  #   aliyun.com       the cloud console and the PURCHASE flow. It was NOT
+  #                    proxied - the DOMAIN-SUFFIX,aliyun.com,LOCAL rule below
+  #                    sent it through LOCAL[DISPATCH] - but the owner named
+  #                    common-buy.aliyun.com on 2026-10-16, and the purchase flow
+  #                    calls buy-api / query / cart / promotion on the same
+  #                    suffix (log 13:03-13:04), so the whole family is pinned
+  #                    raw DIRECT: no group hop, one stable egress for the
+  #                    logged-in buy session, and nothing can re-escalate it.
+  #   tmall.com        Taobao's sister storefront. It was NOT proxied either -
+  #                    it rode the catch-all (Match -> DISPATCH[DIRECT], log
+  #                    13:06-13:07: www/umdc/h5api/pass.aliyun.tmall.com) - but
+  #                    nothing pinned it: only the domestic list stood between it
+  #                    and a learned escalation. Pinned raw DIRECT with the
+  #                    rest; tmall.hk (pass./list.tmall.hk in the same session)
+  #                    joins the domestic list so it cannot be learned either.
+  # The owner-named families and these pins sit ABOVE the autolearn
+  # rule-sets and ABOVE the 911 set (first match wins), so the learner's safety
+  # rules leave them alone (#2 domestic list - extended for the JD SSO families
+  # in config\domestic-suffixes.txt the same day; #3 explicit rule). Raw DIRECT
+  # also keeps ONE source IP for the shopping/login session instead of bouncing
+  # adapters mid-session - the hncloud/cloud.tencent reasoning above. The stale
+  # autolearn-direct entries (alibaba-inc.com, jddebug.com, alipcsec.com) stop
+  # being refreshed and age out under the 30-day TTL meanwhile - these pins
+  # shadow them from the moment the config reloads.
+  - DOMAIN-SUFFIX,taobao.com,DIRECT
+  - DOMAIN-SUFFIX,tmall.com,DIRECT
+  - DOMAIN-SUFFIX,jd.com,DIRECT
+  - DOMAIN-SUFFIX,alibaba-inc.com,DIRECT
+  - DOMAIN-SUFFIX,jddebug.com,DIRECT
+  - DOMAIN-SUFFIX,alipcsec.com,DIRECT
+  - DOMAIN-SUFFIX,aliyun.com,DIRECT
+
+  # ---------- US visa scheduling portal: the whole flow stays direct (owner, 2026-10-11) ----------
+  # The portal and everything it needs to log in, so a session is never split between the
+  # direct path and the proxy: usvisascheduling.com (portal), ustraveldocs.com (support),
+  # b2clogin.com (its Azure AD B2C login), challenges.cloudflare.com (the bot challenge
+  # that guards it), msauth.net / msftauth.net (login assets).
+  # challenges.cloudflare.com is the one that was broken: the auto-learner carries
+  # DOMAIN-SUFFIX,cloudflare.com and was sending the challenge script to the proxy while
+  # the page it protects went direct - the classic way a "Just a moment..." check hangs.
+  # Measured 2026-10-11: it answers 302 on the direct path, so direct is safe for it.
+  # microsoftonline.com is deliberately NOT pinned: the portal's own auth is b2clogin.com,
+  # and Office logins keep their measured AUTO rule.
+  # SEPARATE FINDING, same day: the portal's name is POISONED by the local resolver (it
+  # answers 141.193.154.210, not a Cloudflare address, no TCP 443), while 223.5.5.5,
+  # 119.29.29.29, 180.76.76.76, 8.8.8.8 and DoH all agree on 172.64.146.157 /
+  # 104.18.41.99. Routing could not have fixed that: the name is pinned in the Windows
+  # hosts file (see docs\TODO.md), so the traffic stays direct and simply has a reachable
+  # address. Refresh with:
+  #   Resolve-DnsName www.usvisascheduling.com -Server 223.5.5.5 -Type A -DnsOnly
+  - DOMAIN-SUFFIX,usvisascheduling.com,DISPATCH
+  - DOMAIN-SUFFIX,ustraveldocs.com,DISPATCH
+  - DOMAIN-SUFFIX,b2clogin.com,DISPATCH
+  - DOMAIN-SUFFIX,challenges.cloudflare.com,DISPATCH
+  - DOMAIN-SUFFIX,msauth.net,DISPATCH
+  - DOMAIN-SUFFIX,msftauth.net,DISPATCH
+  - DOMAIN-SUFFIX,msauthimages.net,DISPATCH
+  - DOMAIN-SUFFIX,msftauthimages.net,DISPATCH
+
+  # Public resolvers used by the DNS policy for overseas lookups. They are
+  # addressed by IP, so a domain rule cannot catch them - and with the catch-all now
+  # MATCH,DISPATCH they would go out direct and come back poisoned or null-routed if
+  # this were left to the fallback. Pinning them to AUTO (the 4:1 mix, paid first) is
+  # fallback) is therefore load-bearing, not decoration; it also records the trap
+  # from when the catch-all was MATCH,LOCAL and they fell through it.
+  - IP-CIDR,8.8.8.8/32,AUTO,no-resolve
+  - IP-CIDR,8.8.4.4/32,AUTO,no-resolve
+  - IP-CIDR,1.1.1.1/32,AUTO,no-resolve
+  - IP-CIDR,1.0.0.1/32,AUTO,no-resolve
+
+  # ---------- ChatGPT / Codex: US pin (owner, 2026-10-16) ----------
+  # Owner: "use us proxy or aliyun silicon valley proxy for chatgpt.com" and "for
+  # https://chatgpt.com/codex/pricing/ proxy". HISTORY (kept): chatgpt.com had been
+  # escalated by the learner into `autolearn-paid` during the 10-12/10-13 outage
+  # windows (26,083 logged failures, while the HypoMux pool still carried the dead
+  # uplinks) - and PAID is a 49-node worldwide round-robin: measured 2026-10-13,
+  # chatgpt.com through it = best exit 261 ms (Malaysia), 41 of 49 exits >= 874 ms,
+  # 9 exits over the 5 s timeout - i.e. every Codex/ChatGPT connection opened from a
+  # random country (NL/ES/EG in one sample). The 2026-10-13 pin to AUTO fixed that
+  # churn but NOT the exits: re-measured 2026-10-16, the pricing page answers
+  # 770-786 ms only via aliyun-la (the Aliyun US box), while aliyun-native 503s and
+  # every 911 exit tested 404s (see the CHATGPT group's own record above).
+  # This rule wins first-match over RULE-SET,autolearn-paid below, and the learner's
+  # safety rule #3 leaves explicitly-routed domains alone, so it cannot be
+  # re-escalated. `ab.chatgpt.com` (the desktop app's telemetry) shares the suffix
+  # and rides CHATGPT (US) too.
+  # 2026-10-16 night (owner: "proxy https://auth.openai.com/choose-an-account to
+  # us or tokyo"): auth.openai.com - the sign-in + account chooser - pinned to
+  # the SAME group (aliyun-tokyo now its last member) so chatgpt.com and the
+  # login flow exit from one country, US-first. Through AUTO it measured 403
+  # (Cloudflare, 1.9 s) or a >6 s hang, country changing per connection.
+  # auth0.openai.com (owner follow-up, ~00:3x: "auth0.openai.com proxy to us or
+  # tokyo") is the tenant host the platform sign-in redirects through; measured
+  # 209 ms via aliyun-la / 212-307 ms via aliyun-tokyo (one noisy first round).
+  # NOT the broader auth0.com: that is the whole identity provider, non-OpenAI
+  # tenants included, and RULE-SET,clashmi-911 below already carries it.
+  # api.openai.com (2026-10-17 early): the sign-in client's own account calls
+  # (/auth, /mfa, /profile per the app binary) rode AUTO, whose HK/MY paid share
+  # is the wrong country for an OpenAI account flow - HK is not an OpenAI region.
+  # Pinned to the same group so the account/API host the login touches exits US.
+  - DOMAIN-SUFFIX,auth.openai.com,CHATGPT
+  - DOMAIN-SUFFIX,auth0.openai.com,CHATGPT
+  - DOMAIN-SUFFIX,api.openai.com,CHATGPT
+  # Codex app assets/files (2026-10-18, same "speedup codex" pass):
+  # cdn.oaistatic.com serves the app's static bundles, *.oaiusercontent.com its
+  # attachments - neither had a rule and both rode the DIRECT catch-all.
+  # Measured through omr: cdn.oaistatic.com 100 ms.
+  - DOMAIN-SUFFIX,oaistatic.com,CHATGPT
+  - DOMAIN-SUFFIX,oaiusercontent.com,CHATGPT
+  - DOMAIN-SUFFIX,chatgpt.com,CHATGPT
+
+  # ---------- Lingoda classroom: realtime pin (owner, 2026-10-14) ----------
+  # "help me to speedup lingoda", with the classroom's own diagnostics page.
+  # MEASURED 2026-10-14 05:5x (URLTest across all 49 paid exits; 44 answered on
+  # the websocket; table in state\lingoda-latency-20261014.txt): the classroom's
+  # realtime host presentation.lingoda.com answers HK 111 ms / SG 131 / TW 161,
+  # while the AUTO members the learner had it riding were the problem - MY
+  # 806 ms, and the free Aliyun share times out. class.lingoda.com (CloudFront)
+  # answers SG 288 / HK 328. Direct is worse on both counts (presentation TTFB
+  # 750 ms direct vs 271 ms through the proxy), and 06:00 is an off-peak hour -
+  # the gap only widens at class time. These rules pin the whole family -
+  # class / learn / presentation / teacher / t.lingoda.com, plus the kameleoon
+  # experiment domain - to the LINGODA group above (HK primary, SG/TW fallback).
+  # They sit ABOVE the autolearn rule-sets because first match wins; with an
+  # explicit rule present the learner's safety rule #3 keeps these domains out
+  # of both buckets from now on, and the stale autolearn-direct entry stops
+  # being refreshed and ages out under its 30-day TTL meanwhile.
+  - DOMAIN-SUFFIX,lingoda.com,LINGODA
+  - DOMAIN-SUFFIX,exp-lingoda.com,LINGODA
+
+  # ---------- Dev hosts pinned off the raw path (owner, 2026-10-17) ----------
+  # crates.io (the whole cargo surface: index./static.crates.io) and
+  # quantconnect.com (www/api/live - the QC platform's request surface)
+  # failed TLS on the raw path and through the catch-all this morning;
+  # worldquantbrain.com (WorldQuant BRAIN api + platform, 2026-10-17: "BRAIN
+  # connections still fail during TLS setup" both direct and through 7897 -
+  # they rode the same catch-all) joins 2026-10-17 09:0x;
+  # yahoo.com/yimg.com (Yahoo Finance, 2026-10-17: "Yahoo is currently
+  # returning TLS connection errors" - AUTO served it via dirty shares) joins;
+  # pinned to the DEV group above (Tokyo tunnel first) so they always exit
+  # via a working path. Above the autolearn sets: first match wins and the
+  # learner's safety rule #3 then leaves them alone.
+  - DOMAIN-SUFFIX,crates.io,DEV
+  - DOMAIN-SUFFIX,quantconnect.com,DEV
+  - DOMAIN-SUFFIX,worldquantbrain.com,DEV
+  - DOMAIN-SUFFIX,yahoo.com,DEV
+  - DOMAIN-SUFFIX,yimg.com,DEV
+  # Teachable course platform (owner, 2026-10-17): the lecture page died on the
+  # raw path (000 after 6 s) and answered 200s from LA/Tokyo; the page pulls
+  # assets from teachablecdn.com, fast.wistia.com and static-media.hotmart.com,
+  # so the whole set rides DEV.
+  - DOMAIN-SUFFIX,teachable.com,DEV
+  - DOMAIN-SUFFIX,teachablecdn.com,DEV
+  - DOMAIN-SUFFIX,wistia.com,DEV
+  - DOMAIN-SUFFIX,wistia.net,DEV
+  - DOMAIN-SUFFIX,hotmart.com,DEV
+
+  # ---------- Auto-learned, MUST stay first ----------
+  # These two are generated by src/proxy/Update-AutoLearnRules.ps1 and override
+  # everything below them.
+  #
+  #   autolearn-paid   : destinations the FREE proxy chain could not reach.
+  #                      Escalated to the 911 nodes. Checked first so it wins
+  #                      over any AUTO rule further down.
+  #   autolearn-direct : destinations that failed on the direct path and have no
+  #                      explicit rule. AUTO resolves the free HypoMux path first
+  #                      (HYPOMUX-PATH -> aliyun-native), then the paid nodes.
+  #
+  # Both files may be empty (`payload: []`), in which case they match nothing.
+  - RULE-SET,autolearn-paid,PAID
+  - RULE-SET,autolearn-direct,AUTO
+
+  # ---------- B-class: IP blocked, must use a proxy ----------
+  - DOMAIN-SUFFIX,google.com,AUTO
+  - DOMAIN-SUFFIX,googleapis.com,AUTO
+  - DOMAIN-SUFFIX,googleusercontent.com,AUTO
+  - DOMAIN-SUFFIX,googlevideo.com,AUTO
+  - DOMAIN-SUFFIX,gstatic.com,AUTO
+  - DOMAIN-SUFFIX,ggpht.com,AUTO
+  - DOMAIN-SUFFIX,gvt1.com,AUTO
+  - DOMAIN-SUFFIX,gvt2.com,AUTO
+  - DOMAIN-SUFFIX,gvt3.com,AUTO
+  - DOMAIN-SUFFIX,withgoogle.com,AUTO
+  - DOMAIN-SUFFIX,goo.gl,AUTO
+  # Google's short-link domains (owner, 2026-10-11: "c.gle should use proxy"). Before
+  # this, `c.gle` matched no rule and fell to MATCH,DISPATCH: measured, it dies with
+  # `schannel: failed to receive handshake` (the TLS reset this stack sees on blocked
+  # Google hosts) while DNS is fine - both the local resolver and 223.5.5.5 answer the
+  # real 216.239.32.27. `goo.gle` is the same class of Google .gle shortener; the
+  # broader one-line alternative is DOMAIN-SUFFIX,gle,AUTO (Google operates that TLD).
+  - DOMAIN-SUFFIX,c.gle,AUTO
+  - DOMAIN-SUFFIX,goo.gle,AUTO
+  - DOMAIN-SUFFIX,recaptcha.net,AUTO
+  - DOMAIN-SUFFIX,google.dev,AUTO
+  - DOMAIN-SUFFIX,ytimg.com,AUTO
+  - DOMAIN-SUFFIX,youtube.com,AUTO
+  - DOMAIN-SUFFIX,youtu.be,AUTO
+  - DOMAIN-SUFFIX,youtube-nocookie.com,AUTO
+  # Yahoo: pinned to DEV above on 2026-10-17 (AUTO gave finance.yahoo.com TLS
+  # failures and 429s from dirty shared exits); yahoodns.net stays AUTO.
+  - DOMAIN-SUFFIX,yahoodns.net,AUTO
+  # ---------- Speedify: B-class (owner, 2026-10-16: "can i connect to speedify vps?") ----------
+  # MEASURED the same hour, mid-question: on the RAW OS route every speedify.com host
+  # is GFW-reset - speedify.com / api.speedify.com / download.speedify.com all answered
+  # `Recv failure: Connection was reset` (curl 35, ~6 s) while the owner's browser
+  # (chrome.exe, 15:13) rode DISPATCH[DIRECT] and could not load the site. Through the
+  # proxy: speedify.com 200 in 0.9-1.5 s, api 404 in 2.3 s (no root handler - the API
+  # is fine). One of three homepage attempts hit a flaky mix exit (`schannel ... failed
+  # to receive handshake`) - if that flaps, re-test before blaming the rule. This covers
+  # the control plane the SELF-HOSTED / DEDICATED server flow needs (site, account,
+  # installer: /dedicated-vpn-servers/), NOT the tunnel itself - the tunnel is UDP to
+  # the server's IP or its own VPN host, which no domain rule can steer.
+  - DOMAIN-SUFFIX,speedify.com,AUTO
+  # Other commonly blocked services
+  - DOMAIN-SUFFIX,twitter.com,AUTO
+  - DOMAIN-SUFFIX,x.com,AUTO
+  - DOMAIN-SUFFIX,twimg.com,AUTO
+  - DOMAIN-SUFFIX,facebook.com,AUTO
+  - DOMAIN-SUFFIX,fbcdn.net,AUTO
+  - DOMAIN-SUFFIX,instagram.com,AUTO
+  - DOMAIN-SUFFIX,telegram.org,AUTO
+  - DOMAIN-SUFFIX,t.me,AUTO
+  - DOMAIN-SUFFIX,wikipedia.org,AUTO
+  - DOMAIN-SUFFIX,openai.com,AUTO
+  - DOMAIN-SUFFIX,anthropic.com,AUTO
+  - DOMAIN-SUFFIX,claude.ai,AUTO
+  - DOMAIN-SUFFIX,bbc.com,AUTO
+  - DOMAIN-SUFFIX,nytimes.com,AUTO
+  - DOMAIN-SUFFIX,reddit.com,AUTO
+  - DOMAIN-SUFFIX,medium.com,AUTO
+  - DOMAIN-SUFFIX,githubusercontent.com,AUTO
+  # ---- Added 2026-10-10: domains the 911 config proxies but mine missed ----
+  # found by diffing my rules against providers/clashmi.yaml (the 911 config,
+  # which carries 381 proxy rules and ends in MATCH,OpenConnectUs911). I use 911 as
+  # a NODE PROVIDER, so its rules never applied on their own - until 2026-10-11,
+  # when tools\Update-Clashmi911Rules.ps1 lifted its proxy rules into
+  # RULE-SET,clashmi-911. Back then these fell through the catch-all
+  # (MATCH,LOCAL then; MATCH,HYPOMUX-PATH until 2026-10-11) and went direct:
+  #   docker.com -> 128.242.245.253 (US) -> "dial tcp ... i/o timeout"
+  - DOMAIN-SUFFIX,docker.com,AUTO
+  - DOMAIN-SUFFIX,docker.io,AUTO
+  - DOMAIN-SUFFIX,dockerusercontent.com,AUTO
+  - DOMAIN-SUFFIX,dockerhub.com,AUTO
+  # Tiger Brokers (老虎证券) - 7 rules in the 911 config, none in mine
+  - DOMAIN-SUFFIX,itigerup.com,AUTO
+  - DOMAIN-SUFFIX,tigerbrokers.com,AUTO
+  - DOMAIN-SUFFIX,tigerfintech.com,AUTO
+  - DOMAIN-SUFFIX,tigerglobal.com,AUTO
+  - DOMAIN-SUFFIX,tiger-api.com,AUTO
+  - DOMAIN-SUFFIX,tigertrade.com,AUTO
+  - DOMAIN-SUFFIX,laohu8.com,AUTO
+  # Microsoft account / M365 sign-in (small traffic, often slow direct)
+  - DOMAIN-SUFFIX,microsoftonline.com,AUTO
+  - DOMAIN-SUFFIX,live.com,AUTO
+  - DOMAIN-SUFFIX,outlook.com,AUTO
+  - DOMAIN-SUFFIX,hotmail.com,AUTO
+  # Professional / dev services blocked or unreliable from the mainland
+  - DOMAIN-SUFFIX,linkedin.com,AUTO
+  - DOMAIN-SUFFIX,licdn.com,AUTO
+  - DOMAIN-SUFFIX,archive.org,AUTO
+  - DOMAIN-SUFFIX,duckduckgo.com,AUTO
+  - DOMAIN-SUFFIX,dropbox.com,AUTO
+  - DOMAIN-SUFFIX,imgur.com,AUTO
+  # ---------- the WorldQuant BRAIN sign-in page's own dead weight (owner, 2026-10-12) ----------
+  # Owner: "https://platform.worldquantbrain.com/sign-in visit directly, add rule". The page itself
+  # is already on the right path and needs no change (see the measurement below), but reading its
+  # real HTML found the thing that actually makes it hang: it loads this consent script BLOCKING in
+  # its <head>, from a host that no rule named, while the name was resolving to a bogus address.
+  #   <script id="cookieyes" src="https://cdn-cookieyes.com/client_data/<id>/script.js"></script>
+  # Measured 2026-10-12 07:5x, 4 samples per path: DIRECT 3 of 4 failed (schannel handshake, 5.0 s
+  # each, `dial DISPATCH (match Match/) ... context deadline exceeded`), via the proxy 2 of 4 failed.
+  # Local resolver: 141.193.154.50 - the same bogus 141.193.154.x the US-visa portal was poisoned
+  # with - against AliDNS and Cloudflare, which both answer Cloudflare's 104.18.18.62 / 104.18.19.62.
+  # So it is the familiar pair: the `+.cdn-cookieyes.com` nameserver entry above resolves it
+  # overseas, and this rule takes it off MATCH,DISPATCH. CookieYes is a consent-management CDN
+  # embedded by many sites, so this is not WQ-specific.
+  - DOMAIN-SUFFIX,cdn-cookieyes.com,AUTO
+  # ---------- TradingView (owner, 2026-10-11: "rule trading view to proxy") ----------
+  # MEASURED 2026-10-11 20:2x, BEFORE this rule: no rule named tradingview, so every
+  # host fell to MATCH,DISPATCH and went out DIRECT - and direct is HARD-BLOCKED here,
+  # not merely slow. Eleven hosts probed at once with curl, all eleven identical:
+  #   schannel: failed to receive handshake, SSL/TLS connection failed  (5.0 s timeout)
+  # including tradingview.com, www, data, symbol-search, pine-facade, news-mediator,
+  # pushstream, widgets, s3, tvc4 and charts-symbols. The mihomo log says the same
+  # thing from the other side: `dial DISPATCH (match Match/) --> pine-facade.tradingview.com:443
+  # error: context deadline exceeded`, repeatedly, for every host.
+  # The cause is the NAME, not just the route: the local resolver and AliDNS answer
+  # facebook/CDN ranges for these names and answer DIFFERENTLY every single query
+  # (www -> 184.173.136.86, then 199.59.149.206, then 173.252.108.3) - resolver
+  # poisoning, so there is no stable address to pin in `hosts:`/the hosts file the way
+  # the SQX CDN is pinned. That is why the fix is a pair: this rule (route it) plus the
+  # `+.tradingview.com` entry in dns.nameserver-policy above (resolve it overseas).
+  #
+  # AUTO, not DISPATCH: the site is overseas and every one of its hosts is blocked
+  # direct, so it belongs with the other B-class services in this list. It sits ABOVE
+  # `DOMAIN-SUFFIX,cn,LOCAL` further down on purpose - the family carries
+  # cn.tradingview.com, and under that rule a first-match engine would send it LOCAL
+  # (direct) exactly like the rest of the family, which is the bug being fixed here.
+  - DOMAIN-SUFFIX,tradingview.com,AUTO
+  # Its CDN/asset domain: tradingviewcdn.com serves the widget and library bundles the
+  # chart page pulls, and it is a separate registrable domain, so the rule above does
+  # NOT cover it. Any host that turns out to sit outside both families gets caught by
+  # the SQX-style PROCESS-NAME rule only if a TradingView desktop app is used - the
+  # browser has no such backstop, so add names here if a measurement finds one.
+  - DOMAIN-SUFFIX,tradingviewcdn.com,AUTO
+  # The other two FIRST-PARTY domains, found by fetching the real page through the proxy
+  # after the two rules above were live (1.28 MB of www.tradingview.com, 20:4x): the
+  # homepage references www.tradingview-widget.com (the embeddable-widget host, which
+  # serves every chart embedded in a third-party site) and tradingviewstore.com (the
+  # storefront). Neither is a subdomain of tradingview.com, so neither was covered -
+  # exactly the trap the Store's Akamai assets fell into on the same day.
+  - DOMAIN-SUFFIX,tradingview-widget.com,AUTO
+  - DOMAIN-SUFFIX,tradingviewstore.com,AUTO
+  # IC Markets (owner, 2026-10-18: "visit https://www.ic.com/en/"). The marketing
+  # and portal family is poisoned to Facebook anycast addresses and the real
+  # CloudFront IP is reset on a direct handshake; through the LA tunnel the page
+  # answered 200 (176 KB, 1.8 s). The `+.ic.com` nameserver entry above fixes
+  # the NAME; this rule sends the connection through AUTO. A suffix rule covers the
+  # login/trading hosts as well, which is the point - the catch-all is DISPATCH.
+  - DOMAIN-SUFFIX,ic.com,AUTO
+  # One HOST under a shared CDN, not the CDN: user-uploaded chart images and ideas come
+  # from tradingview-user-uploads.b-cdn.net (BunnyCDN, whose IPs - 192.169.120.162 -
+  # are the same poisoned class as the rest of this family). A bare `b-cdn.net` suffix
+  # rule is deliberately NOT used: BunnyCDN serves thousands of unrelated sites, and
+  # this file does not spend quota on a shared CDN (the akamaized.net note above).
+  - DOMAIN,tradingview-user-uploads.b-cdn.net,AUTO
+  # DELIBERATELY NOT proxied with it: intercom.io / intercomcdn.com, the support
+  # messenger the same page embeds. It is a THIRD-PARTY service shared by thousands of
+  # unrelated sites, and this file routes only what it has measured - add it if the
+  # widget is measured failing while the rest of TradingView works.
+  #
+  # DELIBERATELY NOT COPIED from the 911 config - routing these would burn the
+  # metered 50 GB plan, since they carry a large share of ALL web traffic:
+  #   CDNs      cloudflare.com cloudfront.net akamaized.net fastly.net
+  #             edgekey.net edgesuite.net azureedge.net msedge.net
+  #   streaming twitch.tv vimeo.com spotify.com soundcloud.com
+  #   too broad DOMAIN-KEYWORD,google / amazon / github
+
+  # QuantConnect: now pinned to the DEV group above (2026-10-17 08:4x rewrite).
+  # This spot carried a same-day AUTO pin whose measured exits were all
+  # ~1.2-1.5 s; DEV's Tokyo path answers www/api in ~0.35 s and sits above the
+  # auto-learner, so the learner cannot re-escalate the family.
+
+  # ---------- Explicit DIRECT ----------
+  # Domestic
+  - DOMAIN-SUFFIX,cn,LOCAL
+  - DOMAIN-SUFFIX,baidu.com,LOCAL
+  - DOMAIN-SUFFIX,qq.com,LOCAL
+  - DOMAIN-SUFFIX,tencent.com,LOCAL
+  - DOMAIN-SUFFIX,alibaba.com,LOCAL
+  - DOMAIN-SUFFIX,bilibili.com,LOCAL
+  - DOMAIN-SUFFIX,futunn.com,LOCAL
+  - DOMAIN-SUFFIX,eastmoney.com,LOCAL
+  - DOMAIN-SUFFIX,sina.com.cn,LOCAL
+  - DOMAIN-SUFFIX,xueqiu.com,LOCAL
+  # deepseek.com / microsoft.com / windowsupdate.com / msftconnecttest.com used to be
+  # listed here as LOCAL. They are pinned in the Store/Update and DeepSeek blocks far
+  # above - the Microsoft ones to DISPATCH, deepseek.com to DIRECT since 2026-10-12 -
+  # because the pins must win over the learner and the 911 rule set, so they sit high;
+  # this copy never matched and was removed 2026-10-11 rather than left as a trap. The
+  # "35ms domestic CDN" measurement behind the Microsoft one survives in that block.
+  # Overseas but measured FASTER direct (proxy adds 1.6-3x latency)
+  - DOMAIN-SUFFIX,ibkr.com,LOCAL           # 384ms direct vs 1117ms via tunnel
+  - DOMAIN-SUFFIX,ibllc.com,LOCAL          # IB market data farms (port 4001)
+  - DOMAIN-SUFFIX,alpaca.markets,LOCAL     # 863ms direct vs 1417ms via tunnel
+  # SQX's OTHER CDN name - and the SQXHome content host. CORRECTED 2026-10-14: this one must
+  # NOT be pinned to the HK edge - the HK box 404s /public/sqxhome/ (the URL SQXHome's
+  # isOnline() check fetches; a 404 flips the app to "Offline Mode"), while the real CDN box
+  # 49.13.173.89 serves it 200. Rules: the name -> DATA (it sits ABOVE the strategyquant.com
+  # suffix rule or that rule wins first), and the pinned address itself -> DATA because SQX
+  # resolves locally and hands the proxy the IP (the same trap as the Dukascopy feed below:
+  # INVARIANT - a hosts-pinned name whose rule targets a group needs the matching IP-CIDR).
+  - DOMAIN-SUFFIX,strategyquantcdn.com,DATA  # the prepared-package CDN: bulk, so the DATA ring
+  - IP-CIDR,49.13.173.89/32,DATA,no-resolve
+  - DOMAIN,cdn.strategyquant.com,DATA
+  # SQX's market-data APIs for non-Forex symbols: their names resolve to POISONED addresses
+  # on the system resolver (bitfinex -> a Facebook range, coinbase -> a Dropbox range) and
+  # answer nothing on any direct path. AUTO (the 4:1 mix), because the NAME is what is
+  # broken - through the proxy they resolve remotely and answer 200.
+  - DOMAIN-SUFFIX,binance.com,AUTO
+  - DOMAIN-SUFFIX,bitfinex.com,AUTO
+  - DOMAIN-SUFFIX,coinbase.com,AUTO
+  - DOMAIN-SUFFIX,poloniex.com,AUTO
+  # The old note here said "SQX: proxy IP triggers Cloudflare 403". It did not reproduce on
+  # 2026-10-11 19:5x: proxy and direct both answered 200 for www and autoupdate, so the site is
+  # proxied on the owner's instruction and measured, not assumed.
+  - DOMAIN-SUFFIX,strategyquant.com,AUTO
+  # SQX's data hosts: measured 2026-10-11 - DIRECT IS BLOCKED for these (TCP
+  # timeouts to every real IP, and an SSL handshake failure through LOCAL). The
+  # legacy datafeed ALSO rate-limits with HTTP 429 from every exit IP tried, so
+  # this only buys a working connection, not bulk speed - see
+  # docs\NETWORK-STACK.md ("SQX and the Dukascopy datafeed").
+  # MEASURED 2026-10-11 18:24: the Windows hosts pin for the feed name (added the same day to fix the
+  # poisoned NAME) makes SQX resolve it LOCALLY, so the proxy receives an IP - 194.8.15.155 - and
+  # mihomo can only match that by address. Result: 2,700 connections matched `Match using
+  # DISPATCH[hypomux]` and ZERO reached DATA, i.e. every feed request left from our own uplink IP,
+  # the single-IP pattern Dukascopy answers with 429. The DOMAIN rules below are blind to an IP, so
+  # the address itself is routed here. INVARIANT: any hosts-pinned name whose rule targets a group
+  # needs an IP-CIDR rule for the pinned address, or the pin silently reroutes what it meant to help.
+  # CORRECTED 2026-10-14: mihomo's `hosts:` map IS served to client DNS now (nslookup via
+  # 127.0.0.1 returned the pinned CDN edge while the raw upstream chain did not), so the two
+  # feed names are pinned in `hosts:` above as well - needed again because the morning fixall
+  # removed the Windows copy of the pin, and the DoH policy still silently falls back to the
+  # domestic resolver for this name, which re-poisons some client answers.
+  - IP-CIDR,194.8.15.0/24,DATA,no-resolve
+  - DOMAIN,datafeed.dukascopy.com,DATA
+  - DOMAIN,freeserv.dukascopy.com,DATA
+  # SQX data downloads: ALL of Dukascopy goes through the proxy (owner, 2026-10-11: "give
+  # sqx datadownload all from proxy (dispatch NIC by hypomux as always)"). The suffix now
+  # covers everything under dukascopy.com, website included - that one used to be LOCAL.
+  # DATA rather than AUTO, because bulk downloads want a FEW STABLE exits (Dukascopy
+  # terminates TLS from bursty/multi-IP sources; SQX logged 1,138 of those), so the 4:1
+  # mix's round-robin across five exits is the wrong shape. DISPATCH still applies: every
+  # DATA member dials through HypoMux. Verified: datafeed -> DATA[HK], freeserv ->
+  # DATA[JP] (429, the documented per-IP rate limit), www -> DATA[SG].
+  - DOMAIN-SUFFIX,dukascopy.com,DATA
+
+  # ---------- SQX (StrategyQuant X): everything else through the PROXY (owner, 2026-10-11:
+  # "find the sqx related, rule to proxy"). Measured before this: the CDN family and the
+  # strategyquant.com site/wizard/update were DIRECT while the feed, Yahoo data and the crypto APIs
+  # were already proxied. Bulk keeps the tuned DATA ring; these are the rest, from SQX's own jars
+  # plus its live traffic.
+  - DOMAIN-SUFFIX,sjv.io,AUTO                  # the affiliate/tracking host SQX calls
+  - DOMAIN-SUFFIX,nj4x.com,AUTO                # the MT4/MT5 bridge SQX uses for live trading
+  - DOMAIN-SUFFIX,algocloud.com,AUTO           # SQX-adjacent cloud host seen in its jars
+
+  # The durable half: whatever host SQX reaches for - including ones nobody has listed - its PROCESS
+  # goes through the proxy. AFTER the data rules on purpose, so bulk stays on the DATA ring.
+  - PROCESS-NAME,StrategyQuantX,AUTO
+  - PROCESS-NAME,StrategyQuantX_ui,AUTO
+  - DOMAIN-SUFFIX,schwab.com,LOCAL
+  - DOMAIN-SUFFIX,tradestation.com,LOCAL
+  # Theta-only LA policy approved 2026-10-31 after repeated Tokyo-correlated
+  # runtime stalls. Keep generated configs consistent with the validated LA
+  # runtime rules; generic DEV health checks did not detect those stalls.
+  - DOMAIN-SUFFIX,thetadata.net,aliyun-la
+  - DOMAIN-SUFFIX,thetadata.us,aliyun-la
+  - DOMAIN-SUFFIX,massive.com,LOCAL
+  # worldquantbrain.com: pinned LOCAL on 2026-10-12 ("visit directly"); the
+  # 2026-10-17 morning made direct the FAILING path ("BRAIN connections still
+  # fail during TLS setup ... directly"), so it now rides DEV above.
+# Moved to AUTO 2026-10-10: direct is a HARD failure, not merely slow.
+  # mihomo logged `dial tcp 20.205.243.166:443: i/o timeout` repeatedly and a
+  # raw TCP test from this host times out too, while the same request through
+  # the Aliyun tunnel succeeds. The explicit-rule guard in the auto-learner
+  # deliberately refuses to override a hand-written rule, so this is a manual
+  # correction - it showed up in the learner's REVIEW list.
+  - DOMAIN-SUFFIX,github.com,AUTO
+  - DOMAIN-SUFFIX,githubassets.com,AUTO
+  - DOMAIN-SUFFIX,github.io,AUTO
+  - DOMAIN-SUFFIX,ghcr.io,AUTO
+  # Local / private
+  - IP-CIDR,127.0.0.0/8,DIRECT,no-resolve
+  - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
+  - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
+  - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
+  # Link-local as well: an adapter-scoped address cannot be reached from another
+  # NIC, so dispatching it through HypoMux could only fail. Added with DISPATCH.
+  - IP-CIDR,169.254.0.0/16,DIRECT,no-resolve
+
+  # ---------- the 911 provider's own must-proxy list (owner, 2026-10-11) ----------
+  # 354 domain rules lifted from the subscription by tools\Update-Clashmi911Rules.ps1
+  # (regenerate that file after the subscription changes). Sent to AUTO: mihomo
+  # picks the upstream - the 4:1 mix leads with the 911 exits, Aliyun takes one in five as its
+  # fallback - and the dial is handed to HypoMux, which picks the NIC. Verified:
+  # partneradvantage.goog / futuhk.com / futu.link -> `match RuleSet(clashmi-911)
+  # using AUTO`, i.e. proxied, while everything not named above goes DIRECT.
+  - RULE-SET,clashmi-911,AUTO
+
+  # ---------- Fallback: DIRECT (owner, 2026-10-11) ----------
+  # NOT everything is proxied. Only what a rule above names - our measured set, the
+  # 911 provider's own list, and the learner's escalations - takes the proxy chain;
+  # everything else follows the OS route on the fast local link. Measured right
+  # after the change: www.speedtest.net -> `match Match using DIRECT` (it used to
+  # ride the proxy, because the catch-all was MATCH,HYPOMUX-PATH).
+  # Whatever IS proxied still hands its dial to HypoMux (dialer-proxy), so the NIC
+  # choice stays HypoMux's - dispatch is unchanged, the selection is narrower.
+  - MATCH,DISPATCH
+

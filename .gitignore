@@ -1,0 +1,115 @@
+# =============================================================================
+#  Runtime state and secrets - never commit these.
+#  Everything the stack produces while running lands in state/.
+# =============================================================================
+
+# --- runtime state -----------------------------------------------------------
+state/
+*.log
+!docs/**/*.log
+
+# SmartDNS runtime artefacts
+/smartdns.cache
+# (removed: the audit CSV is kept under archive/smartdns/ and must not be ignored)
+/smartdns.console.log
+status.json
+hotspot-status.json
+autolearn.json
+autolearn-summary.json
+adapter-monitor.json
+adapter-monitor.log
+
+# --- secrets -----------------------------------------------------------------
+# The Aliyun host credentials and the shadowsocks key live outside the repo,
+# but guard against an accidental copy.
+*credential*
+*password*
+*secret*
+aliyun-server.txt
+hysteria2.json
+ss-key.txt
+known_hosts
+*.pem
+*.key
+!config/*.key.example
+
+# --- backups / one-off artefacts ---------------------------------------------
+*.bak
+*.bak-*
+*.orig
+*.tmp
+*.disabled
+*.permigrate
+*-backup.txt
+tmp-*.conf
+proxyoverride-backup.txt
+sysproxy-backup-before-mihomo.txt
+
+# --- runtime/ : the deployed mihomo install ----------------------------------
+# Source that lives in here (mihomo-supervisor.ps1) IS versioned. Everything the
+# install ships or the run produces is not:
+#   * mihomo.exe is 61 MB and GeoSite.dat another 4 MB - not repository content;
+#   * config.yaml is excluded ON PURPOSE. The live file carries the shadowsocks
+#     and hysteria2 passwords, and this repo's rule is that secrets are never
+#     committed. The cost is that the hand-written half of that config (DNS
+#     policy, rules, group order) is not versioned either; see README.
+runtime/mihomo.exe
+runtime/*.exe
+runtime/*.dat
+runtime/cache.db
+runtime/mihomo.err
+runtime/*.log.old
+runtime/config.yaml
+runtime/config.yaml.*
+# The switch's own artefacts: `-DryRun` writes config.hypomux-dryrun.yaml beside
+# the live config (mihomo resolves ./providers relative to it), and a backup taken
+# by hand gets a suffix. Both carry the live secrets, so both stay out of git.
+runtime/config.hypomux-*.yaml
+runtime/config.yaml.pre-*
+runtime/providers/
+runtime/rules/
+# Archived standalone sing-box capture experiment. Current egress capture is
+# owned by HypoMux's separately installed TUN/engine, not these local binaries.
+runtime/sing-box/
+# The dashboard mihomo serves at /ui/ is a 2.5 MB vendored download, not repo
+# content: fetch or update it with tools\Install-Metacubexd.ps1.
+runtime/ui/
+runtime/ui.staging/
+
+# --- OS / editor -------------------------------------------------------------
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# --- PowerShell --------------------------------------------------------------
+# Module analysis cache
+*.psd1.bak
+testResults.xml
+
+# TUN driver: a third-party binary, copied in beside mihomo.exe (see docs).
+# Required by tun: and deliberately not vendored in this repository.
+/runtime/wintun.dll
+
+# --- Upstream source reference ------------------------------------------------
+# mihomo-src/ is a full clone of MetaCubeX/mihomo kept for reading source and
+# local builds. It is not repository content: the clone has its own .git and
+# tags (release/v1.19.32 tracks the binary in runtime/, Alpha is upstream dev).
+# Never commit it here and never nest it into this repo.
+/mihomo-src/
+
+# --- Sub-project: OpenMPTCProuter_test ---------------------------------------
+# Moved in 2026-10-20 from Documents\ChatGPT\ as the stack's OMR sub-project:
+# it owns the `omr` outbound relay (127.0.0.1:65080), the LAN PAC server
+# (:8080) and the OMR VMware VM. 2.4 GB with its own .git - same rule as
+# mihomo-src/: placed here, never committed, never nested into this repo.
+/OpenMPTCProuter_test/
+
+# Repository-local development dependencies and generated validation output.
+/.tools/
+/artifacts/
+/source-manifest.json
+__pycache__/
+*.py[cod]

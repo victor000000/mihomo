@@ -1,0 +1,21 @@
+# Normalise line endings. Without this, every checkout rewrites every file and
+# `git status` is permanently noisy on Windows.
+* text=auto eol=lf
+
+# PowerShell is happiest with CRLF on Windows, but the files are valid either
+# way and LF keeps diffs readable across platforms.
+*.ps1   text eol=lf
+*.psm1  text eol=lf
+*.psd1  text eol=lf
+
+# Explicitly binary
+*.png   binary
+*.jpg   binary
+*.gif   binary
+*.ico   binary
+*.exe   binary
+*.7z    binary
+*.zip   binary
+
+# Keep generated/vendored blobs out of diffs and language stats
+tools/hosts-repos/* linguist-vendored

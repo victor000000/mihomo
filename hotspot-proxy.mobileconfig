@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    HypoMux (mihomo) proxy profile for iPhone/iPad.
+
+    What it does: whenever the device joins the SSID "HypoMux", it uses
+    192.168.137.1:7897 as its HTTP/HTTPS proxy - which is mihomo on this PC.
+    So Google/YouTube work on the hotspot with no per-network settings and no
+    guessing, and the proxy is NOT used on any other Wi-Fi network.
+
+    Why a profile at all: hotspot clients' traffic is forwarded by ICS outside
+    the routing table, so no tunnel on this PC can capture it (mihomo has no
+    redirect option in this build; sing-box's auto_redirect is Linux-only;
+    strict_route does not catch forwarded packets). Pointing the client at the
+    proxy is therefore the only working design, and this file removes the
+    manual configuration step.
+
+    Install (once):
+      1. Transfer this file to the iPhone - AirDrop, email it to yourself, or
+         put it in iCloud Drive. (A plain http URL also works if it is ever
+         served from this PC.)
+      2. Tap it -> iOS offers "Profile Downloaded" / Install.
+      3. Settings -> General -> VPN & Device Management -> install
+         "HypoMux - mihomo proxy", and approve it.
+      4. Join the HypoMux network. Done.
+
+    Remove: Settings -> General -> VPN & Device Management -> remove profile.
+    Nothing here is signed, so iOS will show it as an unsigned profile - that
+    warning is expected for a locally made profile.
+-->
+<plist version="1.0">
+<dict>
+    <key>PayloadContent</key>
+    <array>
+        <dict>
+            <key>PayloadType</key>
+            <string>com.apple.wifi.managed</string>
+            <key>PayloadIdentifier</key>
+            <string>local.mihomo.hotspot.wifi</string>
+            <key>PayloadUUID</key>
+            <string>7B1C4A52-9E6D-4F3A-9C21-5D8E0A4B7C11</string>
+            <key>PayloadVersion</key>
+            <integer>1</integer>
+            <key>PayloadDisplayName</key>
+            <string>HypoMux Wi-Fi + proxy</string>
+            <key>AutoJoin</key>
+            <true/>
+            <key>SSID_STR</key>
+            <string>HypoMux</string>
+            <key>EncryptionType</key>
+            <string>WPA2</string>
+            <key>ProxyType</key>
+            <string>Manual</string>
+            <key>ProxyServer</key>
+            <string>192.168.137.1</string>
+            <key>ProxyServerPort</key>
+            <integer>7897</integer>
+            <key>ProxyCaptiveLoginAllowed</key>
+            <true/>
+        </dict>
+    </array>
+    <key>PayloadDisplayName</key>
+    <string>HypoMux - mihomo proxy</string>
+    <key>PayloadIdentifier</key>
+    <string>local.mihomo.hotspot</string>
+    <key>PayloadOrganization</key>
+    <string>mihomo network stack</string>
+    <key>PayloadRemovalDisallowed</key>
+    <false/>
+    <key>PayloadType</key>
+    <string>Configuration</string>
+    <key>PayloadUUID</key>
+    <string>3F9A6C21-4D77-4B58-A1E9-6C2B8F0D9E42</string>
+    <key>PayloadVersion</key>
+    <integer>1</integer>
+</dict>
+</plist>

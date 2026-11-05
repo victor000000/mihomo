@@ -1,0 +1,8 @@
+{
+    "provider":  "clashmi",
+    "paidGroup":  "PAID",
+    "budgetGb":  40,
+    "freeShare":  1,
+    "paidShare":  1,
+    "period":  "monthly"
+}

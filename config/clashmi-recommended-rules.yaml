@@ -1,0 +1,123 @@
+# =============================================================================
+#  ClashMi 推荐覆写规则（基于 2026-10-10 实测数据）
+#
+#  用途：在 ClashMi「配置 → 覆写规则」里粘贴，或导入为 profile patch。
+#        目的是【只让必须走代理的域名走代理】，其余直连，省流量额度。
+#
+#  你的套餐：64 GB / 已用 10.9 GB / 到期 2026-11-04
+#  当前策略：MATCH,OpenConnectUs911 —— 所有非国内流量都走代理，很费额度
+#
+#  规则顺序很重要：mihomo 从上往下匹配，第一条命中即生效，
+#  所以【必须代理的】放最前面，【直连省钱】的放后面。
+# =============================================================================
+
+rules:
+
+  # ---------------------------------------------------------------------------
+  # ① 必须走代理 —— 被 GFW 投毒，直连必然失败
+  #    实测：每次查询返回不同 IP，且落在 Facebook(31.13/157.240)、
+  #          Dropbox(108.160)、Twitter(199.59) 等无关网段；TCP 全部超时
+  # ---------------------------------------------------------------------------
+  - 'DOMAIN-SUFFIX,dukascopy.com,OpenConnectUs911'          # www/datafeed/freeserv 全部
+  - 'DOMAIN-SUFFIX,interactivebrokers.com,OpenConnectUs911' # 门户站（api.ibkr.com 不受影响）
+
+  # ---------------------------------------------------------------------------
+  # ② Google 全家 —— IP 级封锁（实测 14 个官方网段 IP 的 TCP 与 ICMP 全部超时）
+  #    注意：这类域名【hosts 无效】，因为 IP 本身被黑洞，不是 DNS 污染
+  # ---------------------------------------------------------------------------
+  - 'DOMAIN-SUFFIX,google.com,OpenConnectUs911'
+  - 'DOMAIN-SUFFIX,googleapis.com,OpenConnectUs911'
+  - 'DOMAIN-SUFFIX,gstatic.com,OpenConnectUs911'
+  - 'DOMAIN-SUFFIX,googlevideo.com,OpenConnectUs911'
+  - 'DOMAIN-SUFFIX,googleusercontent.com,OpenConnectUs911'
+  - 'DOMAIN-SUFFIX,goog,OpenConnectUs911'
+  - 'DOMAIN-SUFFIX,ggpht.com,OpenConnectUs911'
+  - 'DOMAIN-SUFFIX,ytimg.com,OpenConnectUs911'
+  - 'DOMAIN-SUFFIX,youtube.com,OpenConnectUs911'
+  - 'DOMAIN-SUFFIX,youtu.be,OpenConnectUs911'
+
+  # ---------------------------------------------------------------------------
+  # ③ 直连省钱 —— 实测直连又快又通，走代理纯属浪费额度
+  #    （延迟为本次实测值；走美国代理反而更慢）
+  # ---------------------------------------------------------------------------
+  - 'DOMAIN-SUFFIX,futunn.com,DIRECT'            # 44 ms，本来就在国内(183.192.184.85)
+  - 'DOMAIN-SUFFIX,futuhk.com,DIRECT'
+  - 'DOMAIN-SUFFIX,microsoft.com,DIRECT'         # MS Store 下载 35 ms，国内 CDN
+  - 'DOMAIN-SUFFIX,windowsupdate.com,DIRECT'
+  - 'DOMAIN-SUFFIX,schwab.com,DIRECT'            # 72 / 74 ms，已很快
+  - 'DOMAIN-SUFFIX,schwabapi.com,DIRECT'
+  - 'DOMAIN-SUFFIX,ibkr.com,DIRECT'              # api.ibkr.com 68 ms
+  - 'DOMAIN-SUFFIX,strategyquant.com,DIRECT'     # SQX 219 ms，Cloudflare 直连可用
+
+  # ---------------------------------------------------------------------------
+  # ④ 淘宝 / 京东 全家 —— 直连（owner，2026-10-16：“do not use proxy for
+  #    https://www.taobao.com/ and jd.com”）
+  #    两台机器上都要成立：PC 端已把这几族钉在 mihomo 的 DIRECT 上（自动学习器
+  #    之上），这份覆写规则负责手机端 ClashMi —— 否则订阅的 MATCH,OpenConnectUs911
+  #    兜底会把它们送上美国代理。
+  #    主站直连还不够：淘宝页面拉 alicdn / tbcdn.cn / mmstat / alibaba-inc.com
+  #    （页面埋点，实测国内直连 0.28 s，走代理 10 s 超时），京东登录会跳
+  #    jdpay / jdcloud / jkcsjd / healthjd / yiyaojd / jd.hk 等独立注册域名，
+  #    图片走 360buyimg.com / 3.cn —— 少了它们，页面照样走代理、照样慢。
+  #    阿里云购买页（common-buy / buy-api / cart，owner 2026-10-16 点名
+  #    common-buy.aliyun.com）与 OSS 域名 aliyuncs.com、国际站 alibabacloud.com
+  #    一起直连：控制台/购买会话要的是一个稳定的出口 IP。
+  # ---------------------------------------------------------------------------
+  - 'DOMAIN-SUFFIX,taobao.com,DIRECT'
+  - 'DOMAIN-SUFFIX,tmall.com,DIRECT'
+  - 'DOMAIN-SUFFIX,alicdn.com,DIRECT'
+  - 'DOMAIN-SUFFIX,tbcdn.cn,DIRECT'
+  - 'DOMAIN-SUFFIX,mmstat.com,DIRECT'
+  - 'DOMAIN-SUFFIX,alibaba-inc.com,DIRECT'
+  - 'DOMAIN-SUFFIX,alibabachengdun.com,DIRECT'
+  - 'DOMAIN-SUFFIX,alipayobjects.com,DIRECT'
+  - 'DOMAIN-SUFFIX,alipcsec.com,DIRECT'
+  - 'DOMAIN-SUFFIX,aliyun.com,DIRECT'
+  - 'DOMAIN-SUFFIX,aliyuncs.com,DIRECT'
+  - 'DOMAIN-SUFFIX,alibabacloud.com,DIRECT'
+  - 'DOMAIN-SUFFIX,jd.com,DIRECT'
+  - 'DOMAIN-SUFFIX,360buyimg.com,DIRECT'
+  - 'DOMAIN-SUFFIX,3.cn,DIRECT'
+  - 'DOMAIN-SUFFIX,jd.hk,DIRECT'
+  - 'DOMAIN-SUFFIX,jdpay.com,DIRECT'
+  - 'DOMAIN-SUFFIX,jdcloud.com,DIRECT'
+  - 'DOMAIN-SUFFIX,jkcsjd.com,DIRECT'
+  - 'DOMAIN-SUFFIX,healthjd.com,DIRECT'
+  - 'DOMAIN-SUFFIX,yiyaojd.com,DIRECT'
+  - 'DOMAIN-SUFFIX,jddj.com,DIRECT'
+  - 'DOMAIN-SUFFIX,jdbusiness.com,DIRECT'
+  - 'DOMAIN-SUFFIX,jdindustry.com,DIRECT'
+  - 'DOMAIN-SUFFIX,jdl.com,DIRECT'
+  - 'DOMAIN-SUFFIX,jdwl.com,DIRECT'
+  - 'DOMAIN-SUFFIX,jdh.com,DIRECT'
+  - 'DOMAIN-SUFFIX,jddebug.com,DIRECT'
+
+  # ---------------------------------------------------------------------------
+  # ⑤ 可选：这五个直连约 270-300 ms（中美物理距离）。
+  #    走美国代理约 200 ms 左右，能快一些但吃额度。
+  #    想省钱就保持 DIRECT；想提速就把 DIRECT 换成 OpenConnectUs911。
+  # ---------------------------------------------------------------------------
+  - 'DOMAIN-SUFFIX,tradestation.com,DIRECT'
+  - 'DOMAIN-SUFFIX,alpaca.markets,DIRECT'
+  - 'DOMAIN-SUFFIX,thetadata.net,DIRECT'
+  - 'DOMAIN-SUFFIX,thetadata.us,DIRECT'
+  - 'DOMAIN-SUFFIX,massive.com,DIRECT'
+  # yahoo.com 注意：你的订阅里已有 DOMAIN-SUFFIX,yahoo.com,OpenConnectUs911
+  # 实测直连 288 ms。要省钱可加下面这条并放到 yahoo 规则之前：
+  # - 'DOMAIN-SUFFIX,finance.yahoo.com,DIRECT'
+
+# =============================================================================
+#  关于 hosts 文件（重要）
+#
+#  ❌ 不要为 Google 添加 hosts 记录。理由：
+#     1. Google 服务 IP 是【IP 级黑洞】：实测 142.250/172.217/216.58/74.125/
+#        64.233/173.194/209.85/108.177 共 14 个 IP，TCP 与 ICMP 全部超时。
+#        写进 hosts 只会让浏览器去连一个被丢包的地址，比现在更糟。
+#     2. ClashMi 配置里 use-hosts: true / use-system-hosts: true，
+#        你的 hosts 会被 mihomo 的 DNS 读取，可能干扰它自己的 fake-ip 分流。
+#     3. 走代理时，客户端把【域名】交给代理，由代理远端解析，
+#        hosts 对这部分流量完全不起作用。
+#
+#  ✅ hosts 唯一适合的场景：把某个域名固定到【你确认可达】的 IP。
+#     例如本机局域网设备、或内网服务。不要用于被墙的境外服务。
+# =============================================================================
