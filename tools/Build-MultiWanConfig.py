@@ -67,6 +67,8 @@ def apply_performance_policy(config, standby_adapters=()):
 
 def transform(config, standby_adapters=()):
     c = remove_911(config)
+    # Mihomo uses full subscription URLs as database keys when ETag caching is enabled.
+    c['etag-support'] = False
     c['proxies'] = [p for p in c['proxies'] if p['name'] not in RETIRED and not p['name'].startswith(('WAN-', 'BALANCED-', 'LA-'))]
     nodes = {p['name']: p for p in c['proxies']}
     if not {'aliyun-tokyo', 'aliyun-la'} <= nodes.keys():

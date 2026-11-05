@@ -19,7 +19,7 @@ function New-CodexCloudTunnelConfig {
  if(-not $routes.Count){throw 'No public cloud addresses; existing routes preserved'}
  return @{
   'mixed-port'=[int]$Policy.mixedPort;'allow-lan'=$false;'bind-address'='127.0.0.1'
-  mode='rule';'log-level'='warning';ipv6=$true;'external-controller'="127.0.0.1:$($Policy.controllerPort)"
+  'etag-support'=$false;mode='rule';'log-level'='warning';ipv6=$true;'external-controller'="127.0.0.1:$($Policy.controllerPort)"
   tun=@{enable=$true;device=[string]$Policy.device;stack='system';'auto-route'=$true;'auto-detect-interface'=$false;
    'auto-redirect'=$false;'strict-route'=$false;'dns-hijack'=@();mtu=1500;'route-address'=@($routes)}
   proxies=@(@{name='Main-Mihomo-Codex';type='socks5';server='127.0.0.1';port=[int]$Policy.egressPort;udp=$false})

@@ -81,6 +81,11 @@ class FakeAPI:
 
 
 class DispatchTests(unittest.TestCase):
+    def test_policy_disables_database_etag_persistence(self):
+        candidate = config()
+        candidate['etag-support'] = True
+        self.assertIs(m.apply_policy(candidate, policy())['etag-support'], False)
+
     def test_adapter_transport_override_preserves_region_binding_and_payload(self):
         before = config()
         before['proxies'].append({'name': 'quic-base', 'type': 'hysteria2',

@@ -21,6 +21,7 @@ Describe 'Codex cloud tunnel boundaries' {
  }
  It 'uses only the loopback Codex egress and does not duplicate server credentials' {
   $config=New-CodexCloudTunnelConfig $policy @('104.18.32.47')
+  $config.'etag-support' | Should -BeFalse
   $config.proxies[0].server | Should -Be '127.0.0.1'
   $config.proxies[0].port | Should -Be 19989
   $config.'external-controller' | Should -Be '127.0.0.1:19997'

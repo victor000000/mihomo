@@ -171,6 +171,8 @@ def apply_policy(config, policy):
     """A narrow, idempotent transformation; never regenerate app-specific policy."""
     validate_policy(policy)
     c = copy.deepcopy(config)
+    # Mihomo uses full subscription URLs as database keys when ETag caching is enabled.
+    c['etag-support'] = False
     # Keep logical path names and saved application selections stable when a
     # physical tethering device is replaced. Also cover provider overrides.
     bindings = policy.get('interfaceBindings', {})

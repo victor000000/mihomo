@@ -101,6 +101,23 @@ jobs:
       - name: Exercise offline policy fixtures
         run: python -m unittest discover -s tests/gateway -p "test_*.py"
 
+  cache-sanitize:
+    name: Offline cache migration (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/cache-sanitize/go.mod
+          cache-dependency-path: tools/cache-sanitize/go.sum
+      - name: Test credential backup, cache preservation and writer lock refusal
+        working-directory: tools/cache-sanitize
+        run: go test ./...
+
   dashboard:
     name: Dashboard behavior
     runs-on: windows-latest

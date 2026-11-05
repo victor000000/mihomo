@@ -306,3 +306,18 @@ Evidence: `state/relocation-20261030-1148/`, including direct, domestic,
 controlled, QUIC comparison and final speed receipts. Activation passed Google
 204, Lingoda 200 and OpenAI 401 connectivity checks. The 31 adaptive dispatch
 tests passed, including transport preservation and standby fallback behavior.
+
+## Credential-free database caches
+
+Keep `etag-support: false` in every Mihomo configuration. Mihomo's ETag cache uses complete provider URLs as database keys, so a subscription token can otherwise persist in `runtime/cache.db`. The main configuration generators and cloud tunnel generator now force ETag caching off, even when input configuration enables it. Credentials belong in ignored private YAML/JSON files or environment variables, backed up only to an owner-private Drive folder.
+
+The toolkit does not use SQLite or another database as a credential fallback. Mihomo's cache may still contain historical URLs from an older deployment. Disabling ETag support prevents future ETag writes; it does **not** erase existing entries.
+
+Use `tools/cache-sanitize` only on an offline cache snapshot. It backs up credential-bearing ETag keys to an explicitly named private JSON file before creating a clean output database. It copies every other bucket and sequence, checks the new database, and never modifies or replaces its input. Its bounded database lock refuses an active writer. The new file has no old free pages carrying deleted URL bytes.
+
+```powershell
+# Run from tools/cache-sanitize with Go installed. All three paths must differ.
+go run . -input C:\Private\cache-offline.db -output C:\Private\cache-clean.db -credential-backup C:\Private\subscription-credentials.json
+```
+
+Verify the credential backup is private and restoreable before removing the original cache. Stop or pause the supervisor and cache-owning core in an agreed maintenance window; verify no process owns the database and the original file still matches the audited snapshot. Only then replace it with the verified clean output. Do not overwrite an active cache or casually restart a proxy carrying downloads. Remove the sensitive offline database snapshot once its extracted credentials are safely backed up. The sanitizer does not stop services, alter live settings, rotate credentials, or upload files.

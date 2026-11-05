@@ -1,3 +1,4 @@
+etag-support: false
 # Sanitized provisioning template. Never overwrite an active deployment with this file.
 # Replace documentation server addresses, adapter names, UUIDs, and password placeholders.
 # Generated policy: tools/Build-MultiWanConfig.py; current standby policy: config/network-architecture.json.

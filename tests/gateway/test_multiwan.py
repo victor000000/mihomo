@@ -4,6 +4,9 @@ spec=importlib.util.spec_from_file_location('multi',Path(__file__).resolve().par
 class MultiWanTests(unittest.TestCase):
  def setUp(self):
   self.c={'proxies':[dict(name=n,type='vless',server='example.test') for n in ('aliyun-tokyo','aliyun-la','omr')],'proxy-providers':{'clashmi':{'type':'http','url':'https://example.test/provider','path':'./providers/clashmi.yaml'}},'proxy-groups':[dict(name=n,type='fallback',proxies=['aliyun-tokyo','omr']) for n in ('DISPATCH','LINGODA','ZOOM','CHATGPT','AUTO','PAID','DATA')],'rules':['DOMAIN-SUFFIX,lingoda.com,LINGODA','MATCH,AUTO']}
+ def test_credential_urls_are_never_persisted_as_etag_keys(self):
+  self.c['etag-support']=True
+  self.assertIs(m.transform(self.c)['etag-support'],False)
  def test_four_independent_paths_in_each_aliyun_pool(self):
   c=m.transform(self.c);nodes={p['name']:p for p in c['proxies']};groups={g['name']:g for g in c['proxy-groups']}
   for name in ('TOKYO-POOL','LA-POOL'):
