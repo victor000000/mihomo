@@ -24,15 +24,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Test native multi-adapter policy
-        shell: pwsh
-        run: |
-          python -m pip install -r tests/requirements.txt
-          python -m unittest discover -s tests/gateway -p "test_*.py"
-
       - name: Bootstrap exact repository-local test dependencies
         shell: pwsh
         run: |
@@ -92,6 +83,23 @@ jobs:
           name: mihomo-toolkit-source
           path: artifacts/mihomo-toolkit.zip
           if-no-files-found: error
+
+  policy:
+    name: Python policy (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned test dependencies
+        run: python -m pip install -r tests/requirements.txt
+      - name: Exercise offline policy fixtures
+        run: python -m unittest discover -s tests/gateway -p "test_*.py"
 
   dashboard:
     name: Dashboard behavior

@@ -64,8 +64,8 @@ class MultiWanTests(unittest.TestCase):
   self.assertEqual(m.transform(optimized),m.transform(self.c))
 class TemplateTests(unittest.TestCase):
  def test_template_is_current_and_has_no_dangling_proxy_references(self):
-  c=m.yaml.safe_load((Path(__file__).resolve().parents[2]/'config/mihomo-config.template.yaml').read_text())
-  policy=json.loads((Path(__file__).resolve().parents[2]/'config/network-architecture.json').read_text())
+  c=m.yaml.safe_load((Path(__file__).resolve().parents[2]/'config/mihomo-config.template.yaml').read_text(encoding='utf-8-sig'))
+  policy=json.loads((Path(__file__).resolve().parents[2]/'config/network-architecture.json').read_text(encoding='utf-8-sig'))
   generated=m.transform(c,policy.get('standbyAdapters',[]))
   # Named group order does not change routing; rules and member order still do.
   actual=copy.deepcopy(c)

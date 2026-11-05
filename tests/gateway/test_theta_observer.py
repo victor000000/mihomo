@@ -4,7 +4,11 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import sys
 from unittest.mock import Mock, patch
+
+if sys.platform == 'win32':
+    raise unittest.SkipTest('Passive observer requires Linux/WSL; covered by the Linux CI job')
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location('theta_observer', ROOT/'tools/ObserveThetaNetwork.py')

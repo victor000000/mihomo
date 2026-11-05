@@ -53,7 +53,7 @@ Documentation-only edits need link/anchor, example, and secret/text checks; they
 
 ## Packaging and CI
 
-[CI](../../.github/workflows/ci.yml) runs the two PowerShell engines, Python policy tests, and Node dashboard tests. The PowerShell 7 job also builds and validates an extracted source bundle without the deployed configuration.
+[CI](../../.github/workflows/ci.yml) runs the two PowerShell engines, Python policy tests on Windows and Linux, and Node dashboard tests. The passive WSL observer module is tested on Linux and explicitly skipped on native Windows. The PowerShell 7 job also builds and validates an extracted source bundle without the deployed configuration.
 
 ```powershell
 pwsh -NoProfile -File .\tools\Build-SourceBundle.ps1

@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 import collections
 import copy
 import datetime as dt
@@ -12,6 +13,19 @@ ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location('dispatch', ROOT / 'tools/AdaptiveDispatch.py')
 m = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(m)
+
+
+@contextmanager
+def dispatch_directory():
+    """Release controller log handles before Windows removes the fixture directory."""
+    with tempfile.TemporaryDirectory() as directory:
+        try:
+            yield directory
+        finally:
+            logger = m.logging.getLogger('adaptive-dispatch')
+            for handler in logger.handlers[:]:
+                handler.close()
+                logger.removeHandler(handler)
 
 
 def policy():
@@ -287,7 +301,7 @@ class DispatchTests(unittest.TestCase):
             m.validate_policy(p)
 
     def test_observe_only_never_mutates_controller(self):
-        with tempfile.TemporaryDirectory() as d:
+        with dispatch_directory() as d:
             api = FakeAPI()
             p = policy()
             p['capacitiesMbps']['WAN']['jd_5G'] = 100
@@ -296,7 +310,7 @@ class DispatchTests(unittest.TestCase):
             self.assertEqual(api.puts, [])
 
     def test_normal_weight_change_is_limited_to_one_bucket_and_cooldown(self):
-        with tempfile.TemporaryDirectory() as d:
+        with dispatch_directory() as d:
             api = FakeAPI()
             p = policy()
             p['capacitiesMbps']['WAN']['jd_5G'] = 100
@@ -307,7 +321,7 @@ class DispatchTests(unittest.TestCase):
             self.assertEqual(len(api.puts), 1)
 
     def test_emergency_evacuates_every_failed_bucket_immediately(self):
-        with tempfile.TemporaryDirectory() as d:
+        with dispatch_directory() as d:
             api = FakeAPI()
             api.proxies['WAN-jd_5G']['extra'][m.REGIONS['WAN'][2]]['alive'] = False
             c = m.Controller(policy(), Path(d), api)
@@ -316,7 +330,7 @@ class DispatchTests(unittest.TestCase):
             self.assertTrue(all(new != m.managed_path('WAN', 'jd_5G') for _, new in api.puts))
 
     def test_recovered_path_regains_its_share_without_long_cooldown_starvation(self):
-        with tempfile.TemporaryDirectory() as d:
+        with dispatch_directory() as d:
             api = FakeAPI()
             health = api.proxies['WAN-jd_5G']['extra'][m.REGIONS['WAN'][2]]
             health['alive'] = False
@@ -329,7 +343,7 @@ class DispatchTests(unittest.TestCase):
             self.assertEqual(status['regions']['WAN']['allocation'][m.managed_path('WAN', 'jd_5G')], 6)
 
     def test_all_failed_leaves_engine_fallbacks_untouched(self):
-        with tempfile.TemporaryDirectory() as d:
+        with dispatch_directory() as d:
             api = FakeAPI()
             for region, (prefix, _, url, _) in m.REGIONS.items():
                 for a in m.ADAPTERS:
@@ -340,7 +354,7 @@ class DispatchTests(unittest.TestCase):
             self.assertTrue(all(r['status'].startswith('all_paths_unavailable') for r in status['regions'].values()))
 
     def test_polled_counters_do_not_invent_start_bytes_or_leak_metadata(self):
-        with tempfile.TemporaryDirectory() as d:
+        with dispatch_directory() as d:
             c = m.Controller(policy(), Path(d), FakeAPI())
             conn = dict(id='PRIVATE-ID', chains=['WAN-jd_5G'], download=1000000, upload=0,
                         metadata={'host': 'SECRET-HOST', 'authorization': 'SECRET-TOKEN'})
@@ -348,13 +362,13 @@ class DispatchTests(unittest.TestCase):
             conn['download'] += 100000
             self.assertEqual(c.flows([conn], 1010)['WAN-jd_5G']['bytes'], 100000)
             c.flows([], 1020)
-            log = (Path(d) / 'dispatch.jsonl').read_text()
+            log = (Path(d) / 'dispatch.jsonl').read_text(encoding='utf-8-sig')
             for secret in ['PRIVATE-ID', 'SECRET-HOST', 'SECRET-TOKEN']:
                 self.assertNotIn(secret, log)
             self.assertEqual(json.loads(log)['observed_bytes'], 100000)
 
     def test_log_rotation_is_bounded(self):
-        with tempfile.TemporaryDirectory() as d:
+        with dispatch_directory() as d:
             logger = m.make_logger(Path(d), max_bytes=512, backups=2)
             for _ in range(100):
                 logger.info('x' * 100)
@@ -363,7 +377,7 @@ class DispatchTests(unittest.TestCase):
             self.assertLessEqual(len(list(Path(d).glob('dispatch.jsonl*'))), 3)
 
     def test_daily_rollup_uses_only_counter_deltas_and_survives_restart(self):
-        with tempfile.TemporaryDirectory() as d:
+        with dispatch_directory() as d:
             api = FakeAPI()
             c = m.Controller(policy(), Path(d), api)
             api.connections = [dict(id='x', chains=['WAN-jd_5G'], download=1000000, upload=0)]
@@ -371,13 +385,13 @@ class DispatchTests(unittest.TestCase):
             api.connections[0]['download'] += 50000
             c.tick(now=1010, observe_only=True)
             daily = next(Path(d).glob('daily-*.json'))
-            self.assertEqual(json.loads(daily.read_text())['paths']['WAN-jd_5G']['observed_bytes'], 50000)
+            self.assertEqual(json.loads(daily.read_text(encoding='utf-8-sig'))['paths']['WAN-jd_5G']['observed_bytes'], 50000)
             other = m.Controller(policy(), Path(d), api)
             other.tick(now=1020, observe_only=True)
-            self.assertEqual(json.loads(daily.read_text())['paths']['WAN-jd_5G']['observed_bytes'], 50000)
+            self.assertEqual(json.loads(daily.read_text(encoding='utf-8-sig'))['paths']['WAN-jd_5G']['observed_bytes'], 50000)
 
     def test_daily_retention_counts_the_new_day(self):
-        with tempfile.TemporaryDirectory() as d:
+        with dispatch_directory() as d:
             now = dt.datetime.now(dt.timezone.utc)
             for days in range(1, 31):
                 day = (now - dt.timedelta(days=days)).date().isoformat()
@@ -387,7 +401,7 @@ class DispatchTests(unittest.TestCase):
             self.assertEqual(len(list(Path(d).glob('daily-*.json'))), 30)
 
     def test_regional_hold_down_requires_sustained_recovery(self):
-        with tempfile.TemporaryDirectory() as d:
+        with dispatch_directory() as d:
             api = FakeAPI()
             for name in ('AUTO', 'DATA'):
                 api.proxies[name] = dict(type='Fallback', now='TOKYO-POOL', fixed='', all=['TOKYO-POOL', 'LA-POOL'])
@@ -411,7 +425,7 @@ class DispatchTests(unittest.TestCase):
             self.assertEqual(tick(1260)['regional_choice']['selected'], 'TOKYO')
 
     def test_releasing_regional_pin_respects_a_subsequent_manual_selection(self):
-        with tempfile.TemporaryDirectory() as d:
+        with dispatch_directory() as d:
             api = FakeAPI()
             api.proxies['AUTO'] = dict(fixed='TOKYO-POOL')
             api.proxies['DATA'] = dict(fixed='LA-POOL')
