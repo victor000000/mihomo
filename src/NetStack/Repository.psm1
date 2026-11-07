@@ -26,7 +26,7 @@
     foreach ($file in @(Get-ChildItem -LiteralPath $Root -File)) {
         if ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
         if ($file.Name -match '(?i)(credential|password|secret|\.bak|\.tmp|\.log)') { continue }
-        if ($file.Name -in @('.gitignore', '.gitattributes') -or $file.Extension -in @('.ps1', '.psm1', '.psd1', '.bat', '.cmd', '.md', '.mobileconfig')) {
+        if ($file.Name -in @('VERSION', '.gitignore', '.gitattributes') -or $file.Extension -in @('.ps1', '.psm1', '.psd1', '.bat', '.cmd', '.md', '.mobileconfig')) {
             $files.Add($file.Name)
         }
     }

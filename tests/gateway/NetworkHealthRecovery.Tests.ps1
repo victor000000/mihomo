@@ -30,6 +30,11 @@ Describe 'Verified recovery health baseline' {
   $proof.VerifiedAtUtc=$now.AddMinutes(1).ToString('o');$proof|ConvertTo-Json|Set-Content $marker
   Get-VerifiedRecoveryTime $marker $config $now | Should -BeNullOrEmpty
  }
+ It 'normalizes offset timestamps before checking the future boundary' {
+  $proof.VerifiedAtUtc=([datetimeoffset]$now.AddMinutes(1)).ToOffset([timespan]::FromHours(8)).ToString('o')
+  $proof|ConvertTo-Json|Set-Content $marker
+  Get-VerifiedRecoveryTime $marker $config $now | Should -BeNullOrEmpty
+ }
  It 'requires successful live connectivity evidence' {
   $proof.CodexConnected=$false;$proof|ConvertTo-Json|Set-Content $marker
   Get-VerifiedRecoveryTime $marker $config $now | Should -BeNullOrEmpty

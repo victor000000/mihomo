@@ -14,7 +14,7 @@ Import-Module (Join-Path $PSScriptRoot '..\src\NetStack\Repository.psm1') -Force
 $paths = @(Get-RepositoryFile -Root $RepositoryRoot | Where-Object {
     $_ -match '^(src|tools|tests|docs|web|archive)[\\/]' -or
     $_ -match '^[^\\/]+\.(bat|ps1|md|mobileconfig)$' -or
-    $_ -in @('.gitignore', '.gitattributes', 'runtime\mihomo-supervisor.ps1',
+    $_ -in @('VERSION', '.gitignore', '.gitattributes', 'runtime\mihomo-supervisor.ps1',
         'config\mihomo-config.template.yaml', 'config\clashmi-recommended-rules.yaml',
         'config\domestic-suffixes.txt', 'config\paid-mix.json',
         'config\mihomo-adapters.json', 'config\network-architecture.json', 'config\dispatch-policy.json', 'config\codex-cloud-tunnel.json', '.github\workflows\ci.yml')

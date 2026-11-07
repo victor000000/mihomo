@@ -84,7 +84,7 @@ Describe 'Route reconciliation obeys the guard without touching native networkin
   New-Item "$fixture\tools","$fixture\config","$fixture\src\NetStack" -ItemType Directory -Force|Out-Null
   $source="$Root\tools\Repair-MihomoAdapters.ps1"
   if($env:MIHOMO_ROUTE_GUARD_CANDIDATE){$source=$env:MIHOMO_ROUTE_GUARD_CANDIDATE}
-  $text=(Get-Content $source -Raw).Replace('Global\MihomoAdapterRepair','Local\MihomoRouteGuardTest')
+  $text=(Get-Content $source -Raw).Replace('Global\MihomoAdapterRepair',('Local\MihomoRouteGuardTest-'+[guid]::NewGuid().ToString('N')))
   # Hermetic fixture exercises the privileged branch without elevation.
   $text=[regex]::Replace($text,'(?m)^\$canAdjustRoutes=.*$','$canAdjustRoutes=$true')
   $text|Set-Content "$fixture\tools\Repair-MihomoAdapters.ps1"

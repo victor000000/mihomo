@@ -67,3 +67,7 @@ This writes `artifacts/mihomo-toolkit.zip` with a SHA-256 source manifest. Use `
 ## Deployment boundary
 
 CI has read-only repository permissions. It validates offline fixtures and publishes a sanitized source archive as a workflow artifact. No automated deployment target or CD workflow is configured. Tests exclude the `Machine` tag and do not certify hardware adapters, live proxy subscriptions, Windows hotspot operation, or production connectivity. Provision and verify those separately using the operations guide; credentials never belong in GitHub Actions artifacts.
+
+## Toolkit version and configuration review
+
+The toolkit version is stored in `VERSION`; the engine has its own version. See [0.0.3 review](RELEASE-0.0.3.md) for the offline configuration comparator and its limits.
