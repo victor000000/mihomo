@@ -1,73 +1,67 @@
-# Development
+# Development and CI
 
 [Documentation index](../README.md) · [Contributing](../../CONTRIBUTING.md)
 
-A clean checkout supports source checks and offline tests. It is not a complete network installation; [deployment prerequisites](OPERATIONS.md#deployment-prerequisites) are separate.
+## Source map and platform requirements
 
-## Source map
+Root wrappers preserve operator entry points. `src/NetStack/` owns shared policy/state/recovery helpers; `src/hotspot/` owns WinRT/ICS operations; `src/dashboard/` and `web/` own the local collector/server/UI. `tools/` contains generation, activation, diagnostics and scheduling helpers. `runtime/mihomo-supervisor.ps1` is source; other runtime assets are private deployment inputs.
 
-| Location | Responsibility |
-|---|---|
-| Root `.bat` and `.ps1` files | Stable operator entry points and compatibility wrappers |
-| `tools/Network.ps1`, `tools/*Mihomo*.ps1` | Startup, status, repair, registration, and activation |
-| `tools/Build-MultiWanConfig.py` | Native adapter and proxy-policy generation |
-| `src/NetStack/` | Shared architecture, policy, recovery, state, and repository helpers |
-| `src/hotspot/` | Windows WinRT/ICS adapter and testable hotspot lifecycle policy |
-| `src/dashboard/`, `web/` | Local dashboard collector, server, and browser code |
-| `tests/` | Pester suites, Python policy tests, and offline dashboard tests |
-| `runtime/mihomo-supervisor.ps1` | Versioned supervisor inside the otherwise private deployment directory |
+CI uses Windows PowerShell 5.1 and PowerShell 7, Python 3.12 on Windows/Linux, Node 22, and Go selected from `tools/cache-sanitize/go.mod` (minimum 1.23). PyYAML is pinned in [requirements.txt](../../tests/requirements.txt); Pester is pinned to 5.5.0 in [Dependencies.psd1](../../tests/Dependencies.psd1). Native Windows is required for Pester/WinRT behavior; Linux alone cannot certify it. Passive observer tests depend on Linux `fcntl` and are explicitly skipped on native Windows.
 
-`tests/gateway/` retains its historical directory name; it now tests the native Mihomo design. Optional accounting and market-data helpers are separate from the main proxy. The Codex cloud helper runs a second Mihomo engine with narrow host routes; see the [configuration reference](CONFIGURATION.md#codex-cloud-tunnel).
+## Dependency bootstrap
 
-## Dependencies
-
-CI uses Windows PowerShell 5.1 and PowerShell 7, Python 3.12, and Node.js 22. Pester is pinned to 5.5.0 in [Dependencies.psd1](../../tests/Dependencies.psd1); Python packages are pinned in [requirements.txt](../../tests/requirements.txt).
-
-From the repository root, acquire dependencies explicitly:
+Use installed interpreters in a development environment. These commands acquire dependencies; they are distinct from offline test execution:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\Initialize-TestEnvironment.ps1
-python -m pip install -r .\tests\requirements.txt
+powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File .\tools\Initialize-TestEnvironment.ps1
+python -m venv .tools/python
+.\.tools\python\Scripts\python.exe -m pip install -r tests/requirements.txt
 ```
 
-Bootstrap downloads Pester to repo-local `.tools/`; test execution does not install missing dependencies. Windows PowerShell 5.1 is required for the deployed WinRT hotspot code. The supervisor and PAC launchers use PowerShell 7. Match the actual caller when editing scripts; use explicit file encodings, especially for non-ASCII text consumed by 5.1.
+Activate that virtual environment or use its explicit interpreter for Python commands below. Bootstrap puts exact Pester under `.tools/Modules`; the runner does not silently download it. Do not install dependencies globally or run extracted untrusted source as an installer. Match caller engines and preserve UTF-8/BOM where Windows PowerShell 5.1 requires it.
 
 ## Checks and tests
 
-Run the relevant checks first, then the complete suite before sharing behavioral changes:
+All commands below are offline with dependencies present; tests use fixtures/mocks and temporary files. Run from the root:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\Invoke-RepoChecks.ps1 -Quiet
-pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\Invoke-RepoChecks.ps1 -Quiet
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1 -CI
-pwsh -NoProfile -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1 -CI
+python tools/Check-Docs.py
+powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File .\tools\Invoke-RepoChecks.ps1 -Quiet
+pwsh -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File .\tools\Invoke-RepoChecks.ps1 -Quiet
+powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1 -CI
+pwsh -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1 -CI
 python -m unittest discover -s tests/gateway -p "test_*.py"
 node --test tests/web/dashboard.test.cjs
 ```
 
-The repository audit checks PowerShell syntax, secrets, HTML structure, and control characters. `-Check list` lists active checks; `-Check secrets` or `-Check control` narrows a run. Missing optional tools may soft-skip a check, so inspect the output as well as the exit code.
+Run the Go component from `tools/cache-sanitize`: `go test ./...`. Its first module download requires network; cached dependency execution uses synthetic databases. The sanitizer's CLI help is `go run . -h`; do not substitute a live database to validate it.
 
-For focused Pester work, pass `-Path .\tests\gateway` or an individual `*.Tests.ps1` file. Default runs exclude `Machine`-tagged tests; `-IncludeMachine` is an explicit live-machine opt-in. Report discovery/container errors and skips rather than quoting only a passed-test count. XML results are written to `artifacts/test-results/powershell-<engine>.xml`, or the specified `-ResultsPath`.
+Pester excludes `Machine` by default. `-IncludeMachine` explicitly opts into machine-dependent operations and is not part of source CI. Use `-Path` for focused files/directories, `-Verbosity Detailed` for diagnosis and `-ResultsPath` for unique artifacts. The runner rejects missing dependencies, empty discovery, container/setup errors and missing XML. Per-engine results go under `artifacts/test-results/`; do not race two runs targeting the same result path.
 
-Documentation-only edits need link/anchor, example, and secret/text checks; they do not require network diagnostics. Live route changes require separate, bounded transport validation, preferably through an isolated engine with distinct ports. Keep real adapters and active sessions out of fault-injection tests.
+Repository audits cover PowerShell syntax, secrets, HTML structure and control characters. Inspect skipped checks and exit status; no gate should be waived just to turn CI green. The [Markdown checker](../../tools/Check-Docs.py) validates inline local links/anchors in root Markdown and `docs/`, excluding fenced examples. It neither fetches external URLs nor checks reference-style links or HTML; review those manually. Its fixture tests are included by Python discovery. `--current-only` explicitly narrows review to root/index/current guides when assessing a native workspace with historical records; it does not replace the all-document default in publication CI.
+
+## Safe configuration examples
+
+The comparison command reads supplied files only:
+
+```powershell
+python tools/Attest-Config.py config/mihomo-config.template.yaml config/mihomo-config.template.yaml
+python tools/Attest-Config.py --help
+python tools/Build-MultiWanConfig.py --help
+python tools/AdaptiveDispatch.py --help
+```
+
+Do not run `AdaptiveDispatch.py --once` as an offline smoke test: it queries the local controller and can change selectors. Candidate generation writes output files; activation, health checks, startup and repairs belong to [operations](OPERATIONS.md), not documentation checks.
 
 ## Packaging and CI
 
-[CI](../../.github/workflows/ci.yml) runs the two PowerShell engines, Python policy tests on Windows and Linux, and Node dashboard tests. The passive WSL observer module is tested on Linux and explicitly skipped on native Windows. The PowerShell 7 job also builds and validates an extracted source bundle without the deployed configuration.
-
 ```powershell
-pwsh -NoProfile -File .\tools\Build-SourceBundle.ps1
-pwsh -NoProfile -File .\tools\Test-SourceBundle.ps1
+pwsh -NoProfile -NonInteractive -WindowStyle Hidden -File .\tools\Build-SourceBundle.ps1
+pwsh -NoProfile -NonInteractive -WindowStyle Hidden -File .\tools\Test-SourceBundle.ps1
 ```
 
-This writes `artifacts/mihomo-toolkit.zip` with a SHA-256 source manifest. Use `-OutputPath` for a new destination; `-Force` explicitly replaces an existing bundle. Runtime credentials, provider caches, state, downloaded binaries, and local dependencies are excluded. The bundle is source-only.
+The builder writes `artifacts/mihomo-toolkit.zip`; choose `-OutputPath` for another destination and use `-Force` only to replace an existing artifact intentionally. It includes VERSION and a source SHA-256 manifest. The validator checks version/hashes and required policies, then runs repository audits, Pester, Python and dashboard tests on a unique extracted source tree with no deployment. Python and Node must be discoverable in that Windows shell; Pester is copied from the pinned development install.
 
-`tools/Backup-Repo.ps1` instead creates a Git bundle of committed history and refs. It does not back up uncommitted changes or private deployment files, and its retention policy removes older bundles. Deployment rollback is covered in [operations](OPERATIONS.md#rollback).
+[CI](../../.github/workflows/ci.yml) runs both PowerShell engines, Python and Go on Windows/Linux, and dashboard tests; the PowerShell 7 job validates the source archive. It explicitly bootstraps dependencies, uploads result XML and publishes a sanitized source artifact. Repository permissions are read-only. There is no automated deployment/CD target and no live application acceptance test.
 
-## Deployment boundary
-
-CI has read-only repository permissions. It validates offline fixtures and publishes a sanitized source archive as a workflow artifact. No automated deployment target or CD workflow is configured. Tests exclude the `Machine` tag and do not certify hardware adapters, live proxy subscriptions, Windows hotspot operation, or production connectivity. Provision and verify those separately using the operations guide; credentials never belong in GitHub Actions artifacts.
-
-## Toolkit version and configuration review
-
-The toolkit version is stored in `VERSION`; the engine has its own version. See [0.0.3 review](RELEASE-0.0.3.md) for the offline configuration comparator and its limits.
+`Backup-Repo.ps1` makes a Git bundle of committed refs/history with retention; it does not back up private deployment state or uncommitted edits. Version 0.0.3 is the toolkit version in [VERSION](../../VERSION), independent of the engine. Migration/review scope is in [the release note](RELEASE-0.0.3.md); runtime backup/rollback is in [operations](OPERATIONS.md#rollback).

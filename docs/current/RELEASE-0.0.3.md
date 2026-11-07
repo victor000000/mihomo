@@ -31,3 +31,7 @@ PyYAML is already pinned in `tests/requirements.txt`. Output may be redirected t
 ## Validation
 
 Validation results and publication provenance are recorded in [the dated verification note](../verification/2026-11-07-toolkit-0.0.3-publication.md). No deployment, repair, terminal-status requests, market requests, adapter manipulation or session interruption is part of this release review.
+
+## Documentation maintenance
+
+The subsequent [documentation audit](../verification/2026-11-07-documentation-audit.md) reconciles current guides and interface descriptions without changing the 0.0.3 implementation contract or rewriting the dated release verification record. Its coverage and remaining limitations are separate from deployment acceptance.

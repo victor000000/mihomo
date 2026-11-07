@@ -1,43 +1,29 @@
 # Documentation index
 
-Start with the [project overview](../README.md). Commands in these guides run from the repository root in a Windows shell unless stated otherwise.
+The maintained source documentation describes the published implementation. Commands use the repository root in a Windows shell unless explicitly labeled otherwise. Runtime state, saved selections and device identity must be checked independently before live changes.
 
-| Document | Purpose |
+| Guide | Owns |
 |---|---|
-| [Deployment and recovery](current/OPERATIONS.md) | First-session checklist, evidence map, known gaps, backup and migration boundaries |
-| [Configuration reference](current/CONFIGURATION.md) | Policy fields, adapter identities and metrics, reload semantics, cloud-only tunnel |
-| [Dispatch](current/DISPATCH.md) | Weighted scheduling, health hysteresis, controller lifecycle and observation limits |
-| [Operations](current/OPERATIONS.md) | Provisioning requirements, daily commands, routing changes, rollback, troubleshooting, and logs |
-| [Architecture](current/ARCHITECTURE.md) | Traffic paths, configuration ownership, adapter recovery, startup, and limitations |
-| [Development](current/DEVELOPMENT.md) | Source map, pinned dependencies, checks, tests, and packaging |
-| [Contributing](../CONTRIBUTING.md) | Change ownership, deployment-data handling, and review expectations |
-| [SQX download follow-up](tasks/SQX-DOWNLOAD.md) | Deferred investigation; observations from 2026-10-20 require rechecking |
-| [WeChat hotspot speedup](tasks/WECHAT-HOTSPOT-SPEEDUP.md) | Hotspot client path, the ICS/proxy adapter coupling, and the opt-in uplink policy |
-| [2026-10-21 verification](verification/2026-10-21.md) | Recorded migration and Lingoda results, evidence locations, and unverified items |
-| [2026-10-25 verification](verification/2026-10-25.md) | StrategyQuant course player (Vimeo) routing and the `VIMEO` group; pre-class Lingoda path measurements and fix |
-| [2026-10-27 verification](verification/2026-10-27.md) | Pre-class Lingoda fix: Zoom China hosts were pinned to the slow tether by `DOMAIN-SUFFIX,cn`; classroom Zoom now uses `ZOOM`/`WAN-jd_5G` |
-| [2026-10-28 verification](verification/2026-10-28.md) | Phone throughput retest and ICS repair restoring adapter-bound IPv4 |
+| [Overview](../README.md) | Project scope and onboarding |
+| [Architecture](current/ARCHITECTURE.md) | Traffic paths, rationale, lifecycle and ownership |
+| [Configuration](current/CONFIGURATION.md) | Policy fields, ports, exposure and application method |
+| [Operations](current/OPERATIONS.md) | Provisioning, command effects, guarded activation, rollback and troubleshooting |
+| [Dispatch](current/DISPATCH.md) | Allocation, health recovery, controller state and limitations |
+| [Contracts and provenance](current/CONTRACTS.md) | Dashboard API, file contracts, passive telemetry and evidence interpretation |
+| [Development](current/DEVELOPMENT.md) | Dependencies, offline checks, tests, source export and CI |
+| [Contributing](../CONTRIBUTING.md) | Ownership, privacy and review expectations |
+| [0.0.3 review](current/RELEASE-0.0.3.md) | Release design and implementation scope |
+| [Release verification](verification/2026-11-07-toolkit-0.0.3-publication.md) | Dated source validation, not current machine health |
+| [Documentation audit](verification/2026-11-07-documentation-audit.md) | Coverage, source/private disposition, validation and unresolved gaps |
 
-| [Bilibili speedup](tasks/BILIBILI-SPEEDUP.md) | Application-specific routing investigation |
-| [iCloud speedup](tasks/ICLOUD-SPEEDUP.md) | iCloud path investigation and observations |
-| [Amazon speedup](tasks/AMAZON-SPEEDUP.md) | Product-page routing, CDN edge choice, the `AMAZON` group, and the `AMAZON-JP` Tokyo-first route for the Japanese store |
-| [Goodreads speedup](tasks/GOODREADS-SPEEDUP.md) | Book-page routing past a TLS reset, AWS WAF challenge-IP alignment and the `GOODREADS` group |
-| [2026-11-02 Goodreads verification](verification/2026-11-02-goodreads.md) | Before/after browser numbers and the WAF split-routing test |
-| [2026-11-04 XVIDEOS verification](verification/2026-11-04-xvideos.md) | Failover repair and before/after 1080p HLS throughput |
-| [2026-11-04 YouTube verification](verification/2026-11-04-youtube.md) | Channel and watch page routing; `hy2-upstream` before/after |
-| [October 29 phone verification](verification/2026-10-29-phone.md) | Phone-specific verification record |
-| [October 29 design verification](verification/2026-10-29-design.md) | Design review record |
-| [October 30 incidents](verification/2026-10-30.md) | Codex outages, ICS collisions, repairs and unresolved rebuild exclusions |
+## Historical evidence
 
-## Reading order
+Dated release records retain their original facts and dates. Current guides supersede the mixed design/measurement prose from [the previous published guides](https://github.com/victor000000/mihomo/tree/7f62fff/docs/current). That snapshot also retains the earlier [HTML design page](https://github.com/victor000000/mihomo/blob/7f62fff/web/design.html), whose retired HypoMux topology must not be used as a current deployment recipe.
 
-For future maintenance, read the overview, handoff and configuration reference first. Use operations for live actions, architecture for traffic paths, dispatch for allocation behavior, and development for offline checks. Dated verification records are historical evidence; they do not override current source policy or establish current machine health.
+Private task notes and incident receipts referenced by earlier indexes were not included in the sanitized publication. They are not missing installation dependencies. The audit inventory records their disposition without exporting private configuration or measurements. There is no published HANDOFF.md; the operations guide owns deployment and recovery.
 
 ## Maintaining the docs
 
-- Keep one owner for each procedure: operations for running the deployment, architecture for how it works, development for source validation.
-- Check behavior against scripts and sanitized configuration before documenting it. The live configuration and controller selections determine the deployed route; the template describes intended policy.
-- Separate current instructions from dated observations. Record the date, command or method, evidence location, and limits of any verification claim. Avoid permanent test-count or speed promises.
-- Use relative links, verify local targets and section anchors, and keep examples explicit about shell and side effects. The repository audit covers secrets and text integrity; it does not currently validate Markdown links.
+Keep one canonical owner per topic as above. Link to the owner rather than copying procedures. Verify claims against source, distinguish template defaults from deployed values, and label every operational command that changes processes, tasks, routes, proxy settings or files. Keep historical outcomes dated and qualify what was actually measured.
 
-Historical OMR/HypoMux material was moved to `C:\Users\victo\mihomo-retired-20261021`. It is outside the maintained project and is not a deployment recipe; the OMR VM disks were deleted.
+Run `python tools/Check-Docs.py` for root/`docs/` Markdown inline local links and anchors, then repository audits. The checker does not fetch external links, execute examples, parse embedded HTML or validate reference-style Markdown. Review those separately. New public docs must contain no private endpoints, credentials, hardware secrets or raw provider payloads.

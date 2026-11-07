@@ -1,32 +1,25 @@
-# Mihomo native multi-adapter networking
+# Mihomo native networking toolkit
 
-Windows networking toolkit for Mihomo routing, four managed adapters, automatic adapter recovery, and Windows Mobile Hotspot.
+Toolkit **0.0.3** manages Windows proxy startup, adapter recovery, Mobile Hotspot/ICS, policy generation and local diagnostics. The Mihomo engine is a separate dependency with its own version. The supported architecture is native Windows networking; the hotspot SSID `HypoMux` is a retained name, not a requirement to run the retired HypoMux engine or an OMR VM.
 
-Applications using the system or explicit proxy enter Mihomo on port **7897**. General traffic can use adapter-bound Tokyo and LA pools. The intended hotspot split prefers **`jd_5G`** for HypoMux clients and reserves other adapters for proxy traffic. Inspect actual ICS ownership before choosing proxy paths; see [deployment and recovery](docs/current/OPERATIONS.md). The main engine's TUN stays disabled. A separate cloud-only tunnel covers Codex's backend WebSocket addresses, because that connection bypasses Windows proxy settings; other native applications follow Windows routing.
+A public clone is sanitized source, not an installed network stack. It contains no engine binary, private runtime configuration, usable proxy credentials or measured guarantee for your hardware. Begin with [development](docs/current/DEVELOPMENT.md) for offline work, or [deployment prerequisites](docs/current/OPERATIONS.md#deployment-prerequisites) for an explicitly planned installation. Never overwrite an existing `runtime/config.yaml` with the template.
 
-## Start here
+## Choose a workflow
 
-This checkout also contains a local deployment. A fresh clone or source bundle needs the runtime binary, private configuration, provider files, and machine setup described in [deployment prerequisites](docs/current/OPERATIONS.md#deployment-prerequisites).
-
-On an already provisioned Windows machine, run from the repository root:
-
-```powershell
-.\start-network.bat --check
-.\start-network.bat
-```
-
-The first command captures local status; the second starts the proxy and registered hotspot task and enables the user system proxy. For repair, startup registration, stopping, and live checks, use the [operations guide](docs/current/OPERATIONS.md).
-
-| Need | Read |
+| Goal | Canonical guide |
 |---|---|
-| Resume work or deploy on another machine | [Deployment and recovery](docs/current/OPERATIONS.md) |
-| Understand configuration fields and reload behavior | [Configuration reference](docs/current/CONFIGURATION.md) |
-| Diagnose a connection or change routing | [Operations](docs/current/OPERATIONS.md) |
-| Inspect traffic weights or optimization logs | [Dispatch](docs/current/DISPATCH.md) |
-| Understand adapters, fallback, and hotspot traffic | [Architecture](docs/current/ARCHITECTURE.md) |
-| Develop, test, or package source | [Development](docs/current/DEVELOPMENT.md) and [contributing](CONTRIBUTING.md) |
-| Find task notes and dated results | [Documentation index](docs/README.md) |
+| Understand traffic paths, ownership and failure boundaries | [Architecture](docs/current/ARCHITECTURE.md) |
+| Review policy files, defaults and exposure | [Configuration](docs/current/CONFIGURATION.md) |
+| Start, inspect, repair or recover a provisioned machine | [Operations](docs/current/OPERATIONS.md) |
+| Understand allocation and health hysteresis | [Dispatch](docs/current/DISPATCH.md) |
+| Interpret dashboard/API, logs and configuration fingerprints | [Contracts and provenance](docs/current/CONTRACTS.md) |
+| Install test dependencies, run CI-equivalent checks or package source | [Development](docs/current/DEVELOPMENT.md) |
+| Review release scope and validation limits | [0.0.3 review](docs/current/RELEASE-0.0.3.md) |
 
-Live configuration and credentials stay in ignored deployment files. **Never replace `runtime/config.yaml` with the sanitized template.**
+On an already provisioned Windows machine, `start-network.bat --check` captures local status. `start-network.bat` starts processes, requests the registered hotspot task and enables the user proxy; it is an operational change. Neither is part of offline documentation validation.
 
-The supported design uses native Windows networking. The hotspot retains the SSID **HypoMux**, but the old HypoMux engine and OMR VM are retired. Failover helps new connections; it cannot preserve a TCP session after its path disappears.
+Proxy-aware applications enter the mixed proxy on port 7897. The published template binds it to loopback. Native applications that bypass the proxy continue to follow Windows routing. ICS clients use one shared uplink unless their applications explicitly use a reachable proxy/PAC. A separate optional cloud-only tunnel installs destination host routes. See the architecture guide before treating a healthy browser request as evidence for every application.
+
+Failover helps new connections after detection. It does not preserve a TCP session whose path disappeared, bond one connection across adapters, or establish authenticated application success. Unit tests and CI validate source behavior with fixtures; deployment and hardware acceptance are separate work.
+
+[Documentation inventory](docs/README.md) · [Contributing](CONTRIBUTING.md)

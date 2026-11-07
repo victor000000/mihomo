@@ -24,3 +24,7 @@ Default tests must use fixtures, mocks, and temporary files. They must not conta
 Use the [development commands](docs/current/DEVELOPMENT.md#checks-and-tests) appropriate to the change. Report actual outcomes, engines, failures, and skips. A source test pass does not establish current network health.
 
 Update the guide that owns the changed behavior rather than repeating instructions across files. Keep current procedures under `docs/current/`, deferred work under `docs/tasks/`, and dated measurements under `docs/verification/`. Follow the [documentation maintenance rules](docs/README.md#maintaining-the-docs).
+
+## Documentation review
+
+Inventory root Markdown, docs guides/release records and the web/design.html documentation surface. Compare canonical procedures against the exact source baseline; distinguish sanitized publication defaults from private runtime values. Keep dated verification records immutable and link corrections from current guides. Run `python tools/Check-Docs.py` and the repository audits. The checker covers inline local Markdown links/anchors; embedded HTML, external links and command effects require separate review. Never execute a live procedure solely to validate prose.
